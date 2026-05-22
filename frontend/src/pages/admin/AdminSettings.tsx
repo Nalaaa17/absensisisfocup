@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +10,9 @@ import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
+
+const MapContainerEl = MapContainer as any;
+const CircleEl = Circle as any;
 
 // Fix leaflet icon
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -30,7 +32,7 @@ function LocationMarker({ position, setPosition, radius }: any) {
   return position === null ? null : (
     <>
       <Marker position={position}></Marker>
-      <Circle center={position} radius={radius} pathOptions={{ color: '#ca8a04', fillColor: '#facc15', fillOpacity: 0.15 }} />
+      <CircleEl center={position} radius={radius} pathOptions={{ color: '#ca8a04', fillColor: '#facc15', fillOpacity: 0.15 }} />
     </>
   );
 }
@@ -56,6 +58,7 @@ export default function AdminSettings() {
   const fetchSettings = async () => {
     try {
       const { data: dataArr, error } = await supabase.rpc('get_settings');
+      if (error) throw error;
       const data = dataArr && dataArr.length > 0 ? dataArr[0] : null;  
       if (data) {
         setSettingsId(data.id);
@@ -134,10 +137,10 @@ export default function AdminSettings() {
           <div className="p-6 space-y-5">
             <div className="h-[400px] w-full rounded-2xl overflow-hidden border border-neutral-200 relative bg-neutral-50 z-0">
               {position && (
-                <MapContainer center={position} zoom={15} scrollWheelZoom={true} className="h-full w-full">
+                <MapContainerEl center={position} zoom={15} scrollWheelZoom={true} className="h-full w-full">
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                   <LocationMarker position={position} setPosition={setPosition} radius={radius} />
-                </MapContainer>
+                </MapContainerEl>
               )}
             </div>
 

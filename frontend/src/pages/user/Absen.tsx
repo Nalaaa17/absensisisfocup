@@ -1,14 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, MapPin, Clock, AlertTriangle, Snowflake, Trophy } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, AlertTriangle, Snowflake } from 'lucide-react';
 import { toast } from 'sonner';
 import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/lib/supabase';
+
+const MapContainerEl = MapContainer as any;
+const CircleEl = Circle as any;
 
 // Fix leaflet icon issue in react
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -201,13 +203,13 @@ export default function Absen() {
             
             <div className="h-[300px] w-full rounded-2xl overflow-hidden border border-neutral-200 relative bg-neutral-50">
               {position && geofenceCenter ? (
-                <MapContainer center={geofenceCenter} zoom={16} scrollWheelZoom={false} className="h-full w-full">
+                <MapContainerEl center={geofenceCenter} zoom={16} scrollWheelZoom={false} className="h-full w-full">
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                  <Circle center={geofenceCenter} radius={geofenceRadius} pathOptions={{ color: '#ca8a04', fillColor: '#facc15', fillOpacity: 0.15 }} />
+                  <CircleEl center={geofenceCenter} radius={geofenceRadius} pathOptions={{ color: '#ca8a04', fillColor: '#facc15', fillOpacity: 0.15 }} />
                   <Marker position={position}>
                     <Popup>Posisi Anda</Popup>
                   </Marker>
-                </MapContainer>
+                </MapContainerEl>
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-400">
                   {error ? (

@@ -12,6 +12,8 @@ import AdminSettings from './pages/admin/AdminSettings';
 import KelolaAnggota from './pages/admin/KelolaAnggota';
 import KelolaShift from './pages/admin/KelolaShift';
 
+// ABSENSI SISFO CUP Main Application Router
+
 function App() {
   useEffect(() => {
     if (import.meta.env.VITE_ONESIGNAL_APP_ID) {
@@ -21,7 +23,7 @@ function App() {
         allowLocalhostAsSecureOrigin: true,
         notifyButton: {
           enable: true,
-        },
+        } as any,
       });
     }
   }, []);

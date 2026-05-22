@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { LogOut, LayoutDashboard, Calendar, FileText, Settings, ShieldAlert, Clock, Info, CheckCircle2, Clock3, MapPin, Loader2, Users, Trophy } from 'lucide-react';
+import { LogOut, Calendar, FileText, Settings, ShieldAlert, Clock, Info, CheckCircle2, Clock3, MapPin, Loader2, Users, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/lib/supabase';
