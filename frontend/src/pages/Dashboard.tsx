@@ -56,17 +56,17 @@ export default function Dashboard() {
     if (!user) return;
     try {
       const today = new Date().toISOString().split('T')[0];
-      const { data: statsData, error: statsErr } = await supabase.rpc('get_daily_stats', {
+      const { data: statsData, error: statsErr } = await supabase.rpc('get_admin_stats', {
         p_admin_id: user.id,
         p_date: today
       });
 
-      if (!statsErr && statsData && statsData.length > 0) {
-        setStats(statsData[0]);
+      if (!statsErr && statsData) {
+        setStats(prev => ({ ...prev, ...(statsData as any) }));
       }
 
       // Fetch per-shift stats
-      const { data: ssData, error: ssErr } = await supabase.rpc('get_shift_stats', {
+      const { data: ssData, error: ssErr } = await supabase.rpc('get_admin_shift_stats', {
         p_admin_id: user.id,
         p_date: today
       });
@@ -77,7 +77,7 @@ export default function Dashboard() {
       // Fetch recent activities
       const { data: actData, error: actErr } = await supabase.rpc('get_recent_activities', {
         p_admin_id: user.id,
-        p_date: today
+        p_limit: 5
       });
       if (!actErr && actData) {
         setActivities(actData);
@@ -156,7 +156,7 @@ export default function Dashboard() {
           toast.error(`Gagal mendapatkan lokasi GPS: ${err.message}`);
           setIsReturning(false);
         },
-        { enableHighAccuracy: true }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } catch (e) {
       console.error(e);

@@ -72,20 +72,28 @@ export default function Absen() {
 
     loadData();
 
+    let watchId: number;
     if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
+      watchId = navigator.geolocation.watchPosition(
         (pos) => {
           setPosition([pos.coords.latitude, pos.coords.longitude]);
+          setError(null);
         },
         (err) => {
           setError(err.message);
-          toast.error('Gagal mendapatkan lokasi. Pastikan GPS aktif.');
+          if (err.code !== 3) { // code 3 is timeout, keep trying without annoying user
+            toast.error(`Gagal mendapatkan lokasi: ${err.message}`);
+          }
         },
-        { enableHighAccuracy: true }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     } else {
       setError('Geolokasi tidak didukung oleh browser Anda.');
     }
+
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+    };
   }, [user, navigate]);
 
   useEffect(() => {
