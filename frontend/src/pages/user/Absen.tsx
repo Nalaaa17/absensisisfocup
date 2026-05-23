@@ -44,7 +44,11 @@ export default function Absen() {
 
     const loadData = async () => {
       try {
-        const { data: userDataArr, error: userErr } = await supabase.rpc('login_user', { p_name: user.name });
+        const deviceId = localStorage.getItem('device_id') || '';
+        const { data: userDataArr, error: userErr } = await supabase.rpc('login_user', { 
+          p_name: user.name,
+          p_device_id: deviceId
+        });
 
         if (userErr) throw userErr;
         const userData = userDataArr && userDataArr.length > 0 ? userDataArr[0] : null;
