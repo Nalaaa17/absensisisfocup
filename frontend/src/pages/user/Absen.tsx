@@ -85,7 +85,7 @@ export default function Absen() {
             toast.error(`Gagal mendapatkan lokasi: ${err.message}`);
           }
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
       );
     } else {
       setError('Geolokasi tidak didukung oleh browser Anda.');
@@ -109,8 +109,12 @@ export default function Absen() {
   const isOutOfRange = distance !== null && distance > geofenceRadius;
 
   const handleCheckIn = async () => {
-    if (!position || !geofenceCenter) {
-      toast.error('Lokasi belum ditemukan, harap tunggu.');
+    if (!position) {
+      toast.error('Lokasi Anda belum ditemukan, harap tunggu.');
+      return;
+    }
+    if (!geofenceCenter) {
+      toast.error('Admin belum mengatur lokasi presensi.');
       return;
     }
     
@@ -210,10 +214,12 @@ export default function Absen() {
             </div>
             
             <div className="h-[300px] w-full rounded-2xl overflow-hidden border border-neutral-200 relative bg-neutral-50">
-              {position && geofenceCenter ? (
-                <MapContainerEl center={geofenceCenter} zoom={16} scrollWheelZoom={false} className="h-full w-full">
+              {position ? (
+                <MapContainerEl center={position} zoom={16} scrollWheelZoom={false} className="h-full w-full">
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                  <CircleEl center={geofenceCenter} radius={geofenceRadius} pathOptions={{ color: '#ca8a04', fillColor: '#facc15', fillOpacity: 0.15 }} />
+                  {geofenceCenter && (
+                    <CircleEl center={geofenceCenter} radius={geofenceRadius} pathOptions={{ color: '#ca8a04', fillColor: '#facc15', fillOpacity: 0.15 }} />
+                  )}
                   <Marker position={position}>
                     <Popup>Posisi Anda</Popup>
                   </Marker>
@@ -221,7 +227,7 @@ export default function Absen() {
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-400">
                   {error ? (
-                    <p className="text-red-400 text-sm text-center px-4">{error}</p>
+                    <p className="text-red-400 text-sm text-center px-4">{error} (Sedang mencoba ulang...)</p>
                   ) : (
                     <>
                       <div className="w-8 h-8 border-2 border-gold-400 border-t-transparent rounded-full animate-spin mb-3"></div>
@@ -232,7 +238,17 @@ export default function Absen() {
               )}
             </div>
 
-            {distance !== null && (
+            {!geofenceCenter && position && (
+              <div className="mt-5 flex items-start gap-3 p-4 rounded-xl border bg-gold-50/50 border-gold-200">
+                <AlertTriangle className="w-5 h-5 text-gold-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-bold text-gold-700">Pusat Lokasi Belum Diatur</p>
+                  <p className="text-xs mt-0.5 text-gold-600">Admin belum mengatur lokasi presensi. Silakan hubungi Admin.</p>
+                </div>
+              </div>
+            )}
+
+            {distance !== null && geofenceCenter && (
               <div className={`mt-5 flex items-start gap-3 p-4 rounded-xl border ${isOutOfRange ? 'bg-red-50/50 border-red-200' : 'bg-emerald-50/50 border-emerald-200'}`}>
                 {isOutOfRange ? (
                   <AlertTriangle className="w-5 h-5 text-red-400 mt-0.5 shrink-0" />
@@ -257,12 +273,12 @@ export default function Absen() {
         <Button 
           size="lg" 
           className={`w-full h-14 text-base font-bold rounded-xl shadow-xl transition-all active:scale-[0.98] ${
-            isOutOfRange || !position 
+            isOutOfRange || !position || !geofenceCenter
             ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed shadow-none'
             : 'btn-gold'
           }`}
           onClick={handleCheckIn}
-          disabled={!position || isLoading || isOutOfRange}
+          disabled={!position || isLoading || isOutOfRange || !geofenceCenter}
         >
           {isLoading ? 'Memproses...' : 'Absen Masuk Sekarang'}
         </Button>
