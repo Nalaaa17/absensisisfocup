@@ -1,10 +1,10 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Camera, Upload, Image as ImageIcon, Send } from 'lucide-react';
+import { Camera, Upload, Image as ImageIcon, Send } from 'lucide-react';
+import { PageLayout } from '@/components/layout/PageLayout';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
@@ -22,6 +22,13 @@ export default function FormIzin() {
   const [tujuan, setTujuan] = useState('');
   const [alasan, setAlasan] = useState('');
   const [estimasi, setEstimasi] = useState('');
+  const [serverDate, setServerDate] = useState('');
+
+  React.useEffect(() => {
+    supabase.rpc('get_server_date').then(({ data }) => {
+      if (data?.[0]) setServerDate(data[0].today);
+    });
+  }, []);
 
   const startCamera = async () => {
     try {
@@ -67,6 +74,7 @@ export default function FormIzin() {
       reader.onload = (event) => {
         setPhotoUrl(event.target?.result as string);
       };
+      reader.onerror = () => toast.error('Gagal membaca file foto');
       reader.readAsDataURL(file);
     }
   };
@@ -97,8 +105,41 @@ export default function FormIzin() {
     setIsLoading(true);
     
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = serverDate || new Date().toISOString().split('T')[0];
       const estimatedDateTime = new Date(`${today}T${estimasi}:00`).toISOString();
+
+      let finalPhotoUrl = photoUrl;
+
+      // Upload to Supabase Storage if it's a data URL
+      if (photoUrl.startsWith('data:')) {
+        try {
+          const res = await fetch(photoUrl);
+          const blob = await res.blob();
+          const fileExt = blob.type.split('/')[1] || 'jpg';
+          const fileName = `${user.id}_${Date.now()}.${fileExt}`;
+          
+          const { error: uploadError } = await supabase.storage
+            .from('proofs')
+            .upload(fileName, blob, {
+              contentType: blob.type,
+            });
+            
+          if (uploadError) {
+            throw new Error(`Gagal mengunggah foto: ${uploadError.message}`);
+          }
+          
+          const { data: { publicUrl } } = supabase.storage
+            .from('proofs')
+            .getPublicUrl(fileName);
+            
+          finalPhotoUrl = publicUrl;
+        } catch (uploadErr: unknown) {
+          if (uploadErr instanceof Error) {
+            throw new Error(`Gagal mengunggah foto: ${uploadErr.message}`);
+          }
+          throw new Error('Gagal mengunggah foto');
+        }
+      }
 
       const { error } = await supabase.rpc('request_permission', {
         p_user_id: user.id,
@@ -108,7 +149,7 @@ export default function FormIzin() {
         p_destination: tujuan,
         p_reason: alasan,
         p_estimated_return: estimatedDateTime,
-        p_photo_url: photoUrl
+        p_photo_url: finalPhotoUrl
       });
 
       if (error) {
@@ -118,16 +159,21 @@ export default function FormIzin() {
         throw new Error(error.message);
       }
 
-      toast.success('Izin berhasil diajukan!');
+      toast.success('Berhasil!', {
+        description: 'Pengajuan izin telah dikirim dan menunggu persetujuan.',
+      });
       navigate('/dashboard');
-    } catch (err: any) {
-      toast.error(`Gagal mengajukan izin: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal mengajukan izin: ${err.message}`);
+      } else {
+        toast.error('Terjadi kesalahan yang tidak diketahui.');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Cleanup camera on unmount
   React.useEffect(() => {
     return () => {
       if (stream) {
@@ -137,23 +183,14 @@ export default function FormIzin() {
   }, [stream]);
 
   return (
-    <div className="page-body pb-12">
-      <header className="page-header p-4">
-        <div className="max-w-3xl mx-auto flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="shrink-0 rounded-full hover:bg-gold-50">
-            <ArrowLeft className="w-5 h-5 text-neutral-500" />
-          </Button>
-          <h1 className="font-bold text-lg text-neutral-800">Pengajuan Izin Keluar</h1>
-        </div>
-      </header>
-
-      <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-6">
-        <div className="space-y-5">
-          <div className="card-elegant overflow-hidden">
-            <div className="px-6 py-4 border-b border-neutral-100 bg-gradient-to-r from-white to-gold-50/30">
-              <h3 className="text-sm font-bold text-neutral-700 uppercase tracking-wider">Formulir Detail</h3>
+    <PageLayout title="Pengajuan Izin">
+      <div className="max-w-xl mx-auto">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="card-attendance overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-neutral-100">
+              <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Formulir Detail</h3>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="p-5 space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="tujuan" className="text-neutral-600 font-semibold text-xs uppercase tracking-wider">Tujuan Izin</Label>
                 <Input 
@@ -161,7 +198,7 @@ export default function FormIzin() {
                   value={tujuan}
                   onChange={(e) => setTujuan(e.target.value)}
                   placeholder="Misal: Indomaret terdekat" 
-                  className="input-elegant h-11" 
+                  className="h-11" 
                 />
               </div>
               <div className="space-y-2">
@@ -170,7 +207,7 @@ export default function FormIzin() {
                   id="alasan" 
                   value={alasan}
                   onChange={(e) => setAlasan(e.target.value)}
-                  className="flex min-h-[80px] w-full rounded-xl border border-neutral-200 bg-neutral-50/50 px-3 py-2 text-sm ring-offset-background placeholder:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-400/30 focus-visible:border-gold-400 transition-all"
+                  className="flex min-h-[80px] w-full rounded-xl border border-neutral-200 bg-neutral-50/50 px-3 py-2 text-sm placeholder:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold-400/30 focus-visible:border-gold-400 transition-all"
                   placeholder="Misal: Membeli konsumsi panitia"
                 ></textarea>
               </div>
@@ -181,15 +218,15 @@ export default function FormIzin() {
                   type="time" 
                   value={estimasi}
                   onChange={(e) => setEstimasi(e.target.value)}
-                  className="input-elegant h-11 w-full" 
+                  className="h-11 w-full" 
                 />
               </div>
             </div>
           </div>
 
-          <div className="card-elegant overflow-hidden">
-            <div className="px-6 py-4 border-b border-neutral-100 bg-gradient-to-r from-white to-gold-50/30">
-              <h3 className="text-sm font-bold text-neutral-700 uppercase tracking-wider">Foto Bukti</h3>
+          <div className="card-attendance overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-neutral-100">
+              <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Foto Bukti</h3>
             </div>
             <div className="p-6">
               <div className="bg-neutral-50 rounded-2xl overflow-hidden border-2 border-dashed border-neutral-200 relative min-h-[280px] flex flex-col items-center justify-center">
@@ -203,7 +240,7 @@ export default function FormIzin() {
                       Ambil foto langsung atau unggah dari galeri.
                     </p>
                     <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                      <Button type="button" onClick={startCamera} className="btn-gold rounded-xl">
+                      <Button type="button" variant="gold" onClick={startCamera} className="rounded-lg">
                         <Camera className="w-4 h-4 mr-2" /> Buka Kamera
                       </Button>
                       <div className="relative">
@@ -213,7 +250,7 @@ export default function FormIzin() {
                           onChange={handleFileUpload} 
                           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         />
-                        <Button type="button" className="w-full btn-gold-outline rounded-xl" variant="outline">
+                        <Button type="button" variant="gold-outline" className="w-full rounded-lg">
                           <Upload className="w-4 h-4 mr-2" /> Dari Galeri
                         </Button>
                       </div>
@@ -230,8 +267,8 @@ export default function FormIzin() {
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-4 px-4">
-                      <Button type="button" variant="destructive" onClick={stopCamera} className="rounded-xl">Batal</Button>
-                      <Button type="button" onClick={capturePhoto} className="btn-gold rounded-xl px-8">Ambil Foto</Button>
+                      <Button type="button" variant="destructive" onClick={stopCamera} className="rounded-lg">Batal</Button>
+                      <Button type="button" variant="gold" onClick={capturePhoto} className="rounded-lg px-8">Ambil Foto</Button>
                     </div>
                   </div>
                 )}
@@ -253,10 +290,10 @@ export default function FormIzin() {
           </div>
 
           <Button 
-            type="button" 
-            onClick={() => handleSubmit()}
+            type="submit" 
             size="lg" 
-            className="w-full h-14 text-base font-bold rounded-xl btn-gold"
+            variant="gold"
+            className="w-full h-14 text-base font-bold rounded-xl"
             disabled={isLoading}
           >
             {isLoading ? 'Mengirim Data...' : (
@@ -265,8 +302,8 @@ export default function FormIzin() {
               </span>
             )}
           </Button>
-        </div>
-      </main>
-    </div>
+        </form>
+      </div>
+    </PageLayout>
   );
 }

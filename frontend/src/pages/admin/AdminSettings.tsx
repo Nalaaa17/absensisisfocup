@@ -1,28 +1,46 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Save, MapPin } from 'lucide-react';
+import { Save, MapPin } from 'lucide-react';
+import { Spinner } from '@/components/ui/Spinner';
 import { toast } from 'sonner';
 import { MapContainer, TileLayer, Marker, useMapEvents, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
+import { PageLayout } from '@/components/layout/PageLayout';
 
-const MapContainerEl = MapContainer as any;
-const CircleEl = Circle as any;
+const MapContainerEl = MapContainer as unknown as React.FC<{
+  center: [number, number];
+  zoom: number;
+  scrollWheelZoom: boolean;
+  className?: string;
+  children?: React.ReactNode;
+}>;
+
+const CircleEl = Circle as unknown as React.FC<{
+  center: [number, number];
+  radius: number;
+  pathOptions?: Record<string, any>;
+}>;
+
+interface LocationMarkerProps {
+  position: [number, number] | null;
+  setPosition: React.Dispatch<React.SetStateAction<[number, number] | null>>;
+  radius: number;
+}
 
 // Fix leaflet icon
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-function LocationMarker({ position, setPosition, radius }: any) {
+function LocationMarker({ position, setPosition, radius }: LocationMarkerProps) {
   useMapEvents({
     click(e) {
       setPosition([e.latlng.lat, e.latlng.lng]);
@@ -38,7 +56,6 @@ function LocationMarker({ position, setPosition, radius }: any) {
 }
 
 export default function AdminSettings() {
-  const navigate = useNavigate();
   const { user } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
@@ -48,10 +65,6 @@ export default function AdminSettings() {
   const [settingsId, setSettingsId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
-      navigate('/dashboard');
-      return;
-    }
     fetchSettings();
   }, [user]);
 
@@ -94,8 +107,12 @@ export default function AdminSettings() {
       });
       if (error) throw error;
       toast.success('Pengaturan disimpan!');
-    } catch (err: any) {
-      toast.error(`Gagal: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal: ${err.message}`);
+      } else {
+        toast.error('Gagal menyimpan pengaturan');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -104,82 +121,68 @@ export default function AdminSettings() {
   if (isFetching) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-gold-400 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-          <p className="text-neutral-400 text-sm">Memuat pengaturan...</p>
-        </div>
+        <Spinner />
       </div>
     );
   }
 
   return (
-    <div className="page-body pb-12">
-      <header className="page-header p-4">
-        <div className="max-w-4xl mx-auto flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="shrink-0 rounded-full hover:bg-gold-50">
-            <ArrowLeft className="w-5 h-5 text-neutral-500" />
+    <PageLayout title="Pengaturan Absensi">
+      <div className="card-attendance overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-neutral-100">
+          <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider flex items-center gap-2">
+            <MapPin className="w-3.5 h-3.5" />
+            Lokasi & Radius (Geofence)
+          </h3>
+          <p className="text-xs text-neutral-400 mt-0.5">
+            Klik peta untuk menentukan titik pusat, lalu atur radius.
+          </p>
+        </div>
+        <div className="p-5 space-y-5">
+          <div className="h-[400px] w-full rounded-xl overflow-hidden border border-neutral-200 relative bg-neutral-50 z-0">
+            {position && (
+              <MapContainerEl center={position} zoom={15} scrollWheelZoom={true} className="h-full w-full">
+                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                <LocationMarker position={position} setPosition={setPosition} radius={radius} />
+              </MapContainerEl>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="text-neutral-600 font-semibold text-xs uppercase tracking-wider">Koordinat (Lat, Lng)</Label>
+              <div className="flex gap-2">
+                <Input readOnly value={position ? position[0].toFixed(6) : ''} className="bg-neutral-50 rounded-lg font-mono text-xs" />
+                <Input readOnly value={position ? position[1].toFixed(6) : ''} className="bg-neutral-50 rounded-lg font-mono text-xs" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="radius" className="text-neutral-600 font-semibold text-xs uppercase tracking-wider">Radius (Meter)</Label>
+              <Input 
+                id="radius" 
+                type="number" 
+                min="10"
+                value={radius}
+                onChange={(e) => setRadius(Number(e.target.value))}
+              />
+            </div>
+          </div>
+
+          <Button 
+            variant="gold"
+            className="w-full rounded-lg h-12 text-base" 
+            onClick={handleSave}
+            disabled={isLoading}
+          >
+            {isLoading ? 'Menyimpan...' : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Simpan Pengaturan
+              </>
+            )}
           </Button>
-          <h1 className="font-bold text-lg text-neutral-800">Pengaturan Absensi</h1>
         </div>
-      </header>
-
-      <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-6 space-y-5">
-        <div className="card-elegant overflow-hidden">
-          <div className="px-6 py-4 border-b border-neutral-100 bg-gradient-to-r from-white to-gold-50/30">
-            <h3 className="text-sm font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-gold-500" />
-              Lokasi & Radius (Geofence)
-            </h3>
-            <p className="text-xs text-neutral-400 mt-1">
-              Klik peta untuk menentukan titik pusat, lalu atur radius.
-            </p>
-          </div>
-          <div className="p-6 space-y-5">
-            <div className="h-[400px] w-full rounded-2xl overflow-hidden border border-neutral-200 relative bg-neutral-50 z-0">
-              {position && (
-                <MapContainerEl center={position} zoom={15} scrollWheelZoom={true} className="h-full w-full">
-                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                  <LocationMarker position={position} setPosition={setPosition} radius={radius} />
-                </MapContainerEl>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-neutral-600 font-semibold text-xs uppercase tracking-wider">Koordinat (Lat, Lng)</Label>
-                <div className="flex gap-2">
-                  <Input readOnly value={position ? position[0].toFixed(6) : ''} className="bg-neutral-50 rounded-xl font-mono text-xs" />
-                  <Input readOnly value={position ? position[1].toFixed(6) : ''} className="bg-neutral-50 rounded-xl font-mono text-xs" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="radius" className="text-neutral-600 font-semibold text-xs uppercase tracking-wider">Radius (Meter)</Label>
-                <Input 
-                  id="radius" 
-                  type="number" 
-                  min="10"
-                  value={radius}
-                  onChange={(e) => setRadius(Number(e.target.value))}
-                  className="input-elegant"
-                />
-              </div>
-            </div>
-
-            <Button 
-              className="w-full btn-gold rounded-xl h-12 text-base" 
-              onClick={handleSave}
-              disabled={isLoading}
-            >
-              {isLoading ? 'Menyimpan...' : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
-                  Simpan Pengaturan
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      </main>
-    </div>
+      </div>
+    </PageLayout>
   );
 }

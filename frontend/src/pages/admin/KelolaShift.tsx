@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Clock, Plus, Trash2, Users, Search } from 'lucide-react';
+import { Clock, Plus, Trash2, Users, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
+import { PageLayout } from '@/components/layout/PageLayout';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 interface Shift {
   id: string;
@@ -24,7 +26,6 @@ interface Member {
 }
 
 export default function KelolaShift() {
-  const navigate = useNavigate();
   const { user } = useAuthStore();
   
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -35,12 +36,10 @@ export default function KelolaShift() {
   const [newShiftName, setNewShiftName] = useState('');
   const [newStartTime, setNewStartTime] = useState('');
   const [newEndTime, setNewEndTime] = useState('');
+  
+  const [deleteModal, setDeleteModal] = useState<{isOpen: boolean, id: string | null}>({isOpen: false, id: null});
 
   useEffect(() => {
-    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
-      navigate('/dashboard');
-      return;
-    }
     fetchData();
   }, [user]);
 
@@ -55,8 +54,12 @@ export default function KelolaShift() {
       const { data: memberData, error: memErr } = await supabase.rpc('get_members', { p_admin_id: user.id });
       if (memErr) throw memErr;
       if (memberData) setMembers(memberData);
-    } catch (err: any) {
-      toast.error(`Gagal memuat data: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal memuat data: ${err.message}`);
+      } else {
+        toast.error('Gagal memuat data');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -82,22 +85,33 @@ export default function KelolaShift() {
       setNewStartTime('');
       setNewEndTime('');
       fetchData();
-    } catch (err: any) {
-      toast.error(`Gagal: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal: ${err.message}`);
+      } else {
+        toast.error('Gagal membuat shift');
+      }
     }
   };
 
-  const handleDeleteShift = async (id: string) => {
+  const executeDeleteShift = async (id: string) => {
     if (!user) return;
-    if (!confirm('Hapus shift ini?')) return;
     try {
       const { error } = await supabase.rpc('delete_shift', { p_admin_id: user.id, p_shift_id: id });
       if (error) throw error;
       toast.success('Shift dihapus!');
       fetchData();
-    } catch (err: any) {
-      toast.error(`Gagal: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal: ${err.message}`);
+      } else {
+        toast.error('Gagal menghapus shift');
+      }
     }
+  };
+
+  const handleDeleteShift = (id: string) => {
+    setDeleteModal({isOpen: true, id});
   };
 
   const handleAssignShift = async (userId: string, shiftId: string) => {
@@ -111,8 +125,12 @@ export default function KelolaShift() {
       if (error) throw error;
       toast.success('Shift diperbarui!');
       fetchData();
-    } catch (err: any) {
-      toast.error(`Gagal: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal: ${err.message}`);
+      } else {
+        toast.error('Gagal mengubah shift');
+      }
     }
   };
 
@@ -124,42 +142,33 @@ export default function KelolaShift() {
   );
 
   return (
-    <div className="page-body pb-12">
-      <header className="page-header p-4">
-        <div className="max-w-5xl mx-auto flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="shrink-0 rounded-full hover:bg-gold-50">
-            <ArrowLeft className="w-5 h-5 text-neutral-500" />
-          </Button>
-          <h1 className="font-bold text-lg text-neutral-800">Kelola Shift</h1>
-        </div>
-      </header>
-
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6 space-y-6">
+    <PageLayout title="Kelola Shift">
+      <div className="flex-1 w-full mx-auto space-y-6">
         
         {/* Create Shift */}
-        <div className="card-elegant overflow-hidden">
-          <div className="px-6 py-4 border-b border-neutral-100 bg-gradient-to-r from-white to-gold-50/30">
-            <h3 className="text-sm font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-2">
-              <Clock className="w-4 h-4 text-gold-500" />
+        <div className="card-attendance overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-neutral-100">
+            <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider flex items-center gap-2">
+              <Clock className="w-3.5 h-3.5" />
               Daftar Shift
             </h3>
-            <p className="text-xs text-neutral-400 mt-1">Buat shift dan tentukan batas jam telat.</p>
+            <p className="text-xs text-neutral-400 mt-0.5">Buat shift dan tentukan batas jam telat.</p>
           </div>
-          <div className="p-6 space-y-5">
-            <form onSubmit={handleCreateShift} className="bg-neutral-50 p-4 rounded-2xl border border-neutral-100 flex flex-col md:flex-row gap-4 items-end">
+          <div className="p-5 space-y-5">
+            <form onSubmit={handleCreateShift} className="bg-neutral-50 p-4 rounded-xl border border-neutral-100 flex flex-col md:flex-row gap-4 items-end">
               <div className="w-full space-y-1">
                 <Label className="text-neutral-600 font-semibold text-xs uppercase tracking-wider">Nama Shift</Label>
-                <Input value={newShiftName} onChange={e => setNewShiftName(e.target.value)} placeholder="Shift Pagi" className="input-elegant" />
+                <Input value={newShiftName} onChange={e => setNewShiftName(e.target.value)} placeholder="Shift Pagi" />
               </div>
               <div className="w-full space-y-1">
                 <Label className="text-neutral-600 font-semibold text-xs uppercase tracking-wider">Jam Mulai</Label>
-                <Input type="time" value={newStartTime} onChange={e => setNewStartTime(e.target.value)} className="input-elegant" />
+                <Input type="time" value={newStartTime} onChange={e => setNewStartTime(e.target.value)} />
               </div>
               <div className="w-full space-y-1">
                 <Label className="text-neutral-600 font-semibold text-xs uppercase tracking-wider">Batas Telat</Label>
-                <Input type="time" value={newEndTime} onChange={e => setNewEndTime(e.target.value)} className="input-elegant" />
+                <Input type="time" value={newEndTime} onChange={e => setNewEndTime(e.target.value)} />
               </div>
-              <Button type="submit" className="w-full md:w-auto shrink-0 btn-gold rounded-xl">
+              <Button type="submit" variant="gold" className="w-full md:w-auto shrink-0 rounded-lg">
                 <Plus className="w-4 h-4 mr-1" /> Buat
               </Button>
             </form>
@@ -191,21 +200,21 @@ export default function KelolaShift() {
         </div>
 
         {/* Assign Shift */}
-        <div className="card-elegant overflow-hidden">
-          <div className="px-6 py-4 border-b border-neutral-100 bg-gradient-to-r from-white to-gold-50/30">
+        <div className="card-attendance overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-neutral-100">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h3 className="text-sm font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gold-500" />
+                <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider flex items-center gap-2">
+                  <Users className="w-3.5 h-3.5" />
                   Penugasan Shift
                 </h3>
-                <p className="text-xs text-neutral-400 mt-1">Pilih shift untuk masing-masing anggota.</p>
+                <p className="text-xs text-neutral-400 mt-0.5">Pilih shift untuk masing-masing anggota.</p>
               </div>
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-300" />
                 <Input 
                   placeholder="Cari nama..." 
-                  className="pl-9 w-full md:w-56 input-elegant"
+                  className="pl-9 w-full md:w-56"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -213,32 +222,32 @@ export default function KelolaShift() {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="table-header-gold">
-                <tr>
-                  <th className="px-5 py-3">Nama</th>
-                  <th className="px-5 py-3">Divisi</th>
-                  <th className="px-5 py-3">Shift Saat Ini</th>
-                  <th className="px-5 py-3 text-right">Ubah Shift</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100 bg-white">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[180px]">Nama</TableHead>
+                  <TableHead>Divisi</TableHead>
+                  <TableHead>Shift Saat Ini</TableHead>
+                  <TableHead className="text-right">Ubah Shift</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filteredMembers.map(member => (
-                  <tr key={member.id} className="hover:bg-gold-50/20 transition-colors">
-                    <td className="px-5 py-3.5 font-medium text-neutral-800">{member.name}</td>
-                    <td className="px-5 py-3.5 text-neutral-500">{member.divisi}</td>
-                    <td className="px-5 py-3.5">
+                  <TableRow key={member.id} className="hover:bg-neutral-50 transition-colors">
+                    <TableCell className="font-medium text-neutral-800">{member.name}</TableCell>
+                    <TableCell className="text-neutral-500">{member.divisi}</TableCell>
+                    <TableCell>
                       {member.shift_name ? (
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold badge-gold">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-gold-50 text-gold-700 border border-gold-200">
                           {member.shift_name}
                         </span>
                       ) : (
                         <span className="text-neutral-300 italic text-xs">Tidak ada</span>
                       )}
-                    </td>
-                    <td className="px-5 py-3.5 text-right">
+                    </TableCell>
+                    <TableCell className="text-right">
                       <select 
-                        className="text-sm border border-neutral-200 rounded-xl bg-neutral-50 p-2 focus:ring-gold-400 focus:border-gold-400 transition-colors"
+                        className="text-sm border border-neutral-200 rounded-lg bg-neutral-50 p-2 focus:ring-2 focus:ring-gold-400/30 focus:border-gold-400 transition-colors"
                         value={member.shift_id || 'none'}
                         onChange={(e) => handleAssignShift(member.id, e.target.value)}
                       >
@@ -247,17 +256,30 @@ export default function KelolaShift() {
                           <option key={s.id} value={s.id}>{s.name}</option>
                         ))}
                       </select>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
                 {filteredMembers.length === 0 && !isLoading && (
-                  <tr><td colSpan={4} className="px-5 py-12 text-center text-neutral-400">Anggota tidak ditemukan.</td></tr>
+                  <TableRow><TableCell colSpan={4} className="text-center py-12 text-neutral-400">Anggota tidak ditemukan.</TableCell></TableRow>
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+
+      <ConfirmModal
+        isOpen={deleteModal.isOpen}
+        title="Hapus Shift"
+        description="Apakah Anda yakin ingin menghapus shift ini? Semua anggota yang memiliki shift ini akan kehilangan shift-nya."
+        onCancel={() => setDeleteModal({isOpen: false, id: null})}
+        onConfirm={() => {
+          if (deleteModal.id) {
+            executeDeleteShift(deleteModal.id);
+            setDeleteModal({isOpen: false, id: null});
+          }
+        }}
+      />
+    </PageLayout>
   );
 }

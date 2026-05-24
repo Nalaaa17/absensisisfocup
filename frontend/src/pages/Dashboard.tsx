@@ -1,32 +1,119 @@
+import { AppLayout } from '@/components/layout/AppLayout';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { LogOut, Calendar, FileText, Settings, ShieldAlert, Clock, Info, CheckCircle2, Clock3, MapPin, Loader2, Users, Trophy } from 'lucide-react';
+import { Calendar, FileText, Settings, ShieldAlert, Clock, CheckCircle2, Clock3, MapPin, Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/lib/supabase';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+
+interface ShiftStat {
+  shift_id: string | null;
+  shift_name: string;
+  total_members: number;
+  total_hadir: number;
+  total_izin: number;
+}
+
+interface Activity {
+  id: string;
+  type: string;
+  user_name: string;
+  user_divisi: string;
+  activity_time: string;
+  description: string;
+}
+
+interface ActivePermission {
+  id: string;
+  status: string;
+  estimated_return: string;
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
-  const [stats, setStats] = useState({ hadir: 0, izin: 0, belum: 28 });
-  const [shiftStats, setShiftStats] = useState<any[]>([]);
-  const [activities, setActivities] = useState<any[]>([]);
+  const { user } = useAuthStore();
+  const [stats, setStats] = useState({ hadir: 0, izin: 0, belum: 0 });
+  const [shiftStats, setShiftStats] = useState<ShiftStat[]>([]);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [myShift, setMyShift] = useState<{shift_name: string, start_time: string, end_time: string} | null>(null);
-  const [activePermission, setActivePermission] = useState<any>(null);
+  const [activePermission, setActivePermission] = useState<ActivePermission | null>(null);
   const [isReturning, setIsReturning] = useState(false);
-
+  const [serverDate, setServerDate] = useState('');
+  
+  const [shifts, setShifts] = useState<{id: string, name: string}[]>([]);
+  const [shiftMembers, setShiftMembers] = useState<{id: string, name: string, divisi: string}[]>([]);
+  const [activeShiftId, setActiveShiftId] = useState<string | null>(null);
+  const [isLoadingShiftMembers, setIsLoadingShiftMembers] = useState(false);
   useEffect(() => {
-    if (!user) {
-      navigate('/');
-      return;
+    if (!serverDate) {
+      supabase.rpc('get_server_date').then(({ data }) => {
+        if (data?.[0]) setServerDate(data[0].today);
+      });
     }
-    
+
     fetchUserShift();
-    if (user.role === 'admin' || user.role === 'superadmin') {
+    fetchAllShifts();
+    if (user?.role === 'admin') {
       fetchAdminStats();
     }
-  }, [user, navigate]);
+    checkActivePermission();
+    
+    // Auto refresh data every 1 minute
+    const interval = setInterval(() => {
+      if (user?.role === 'admin') {
+        fetchAdminStats();
+      }
+      checkActivePermission();
+    }, 60000);
+    
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, serverDate]);
+
+  const fetchAllShifts = async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_all_shifts');
+      if (!error && data) {
+        setShifts(data);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchShiftMembers = async (shiftId: string) => {
+    setActiveShiftId(shiftId);
+    setIsLoadingShiftMembers(true);
+    try {
+      const { data, error } = await supabase.rpc('get_users_by_shift', { p_shift_id: shiftId });
+      if (!error && data) {
+        setShiftMembers(data);
+      } else {
+        setShiftMembers([]);
+      }
+    } catch (e) {
+      console.error(e);
+      setShiftMembers([]);
+    } finally {
+      setIsLoadingShiftMembers(false);
+    }
+  };
+
+  const checkActivePermission = async () => {
+    if (!user) return;
+    const today = serverDate || new Date().toISOString().split('T')[0];
+    const { data: permData, error: permErr } = await supabase.rpc('get_user_active_permission', {
+      p_user_id: user.id,
+      p_date: today
+    });
+    if (!permErr && permData && permData.length > 0) {
+      setActivePermission(permData[0]);
+    } else {
+      setActivePermission(null);
+    }
+  };
 
   const fetchUserShift = async () => {
     if (!user) return;
@@ -34,18 +121,6 @@ export default function Dashboard() {
       const { data, error } = await supabase.rpc('get_user_shift_info', { p_user_id: user.id });
       if (!error && data && data.length > 0) {
         setMyShift(data[0]);
-      }
-
-      // Fetch active permission
-      const today = new Date().toISOString().split('T')[0];
-      const { data: permData, error: permErr } = await supabase.rpc('get_user_active_permission', {
-        p_user_id: user.id,
-        p_date: today
-      });
-      if (!permErr && permData && permData.length > 0) {
-        setActivePermission(permData[0]);
-      } else {
-        setActivePermission(null);
       }
     } catch (e) {
       console.error(e);
@@ -55,14 +130,19 @@ export default function Dashboard() {
   const fetchAdminStats = async () => {
     if (!user) return;
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = serverDate || new Date().toISOString().split('T')[0];
       const { data: statsData, error: statsErr } = await supabase.rpc('get_admin_stats', {
         p_admin_id: user.id,
         p_date: today
       });
 
-      if (!statsErr && statsData) {
-        setStats(prev => ({ ...prev, ...(statsData as any) }));
+      if (!statsErr && statsData && typeof statsData === 'object') {
+        const s = statsData as { hadir?: number; izin?: number };
+        setStats(prev => ({
+          ...prev,
+          hadir: s.hadir ?? prev.hadir,
+          izin: s.izin ?? prev.izin,
+        }));
       }
 
       // Fetch per-shift stats
@@ -72,6 +152,12 @@ export default function Dashboard() {
       });
       if (!ssErr && ssData) {
         setShiftStats(ssData);
+        let totalMembers = 0;
+        ssData.forEach((s: ShiftStat) => totalMembers += Number(s.total_members || 0));
+        setStats(prev => ({
+          ...prev,
+          belum: Math.max(0, totalMembers - prev.hadir - prev.izin)
+        }));
       }
 
       // Fetch recent activities
@@ -82,7 +168,7 @@ export default function Dashboard() {
       if (!actErr && actData) {
         setActivities(actData);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error(err);
     }
   };
@@ -164,10 +250,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
-  };
+
 
   const formatTime = (timeStr: string) => {
     if (!timeStr) return '-';
@@ -177,254 +260,295 @@ export default function Dashboard() {
     } catch { return timeStr; }
   };
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'superadmin';
+  const isAdmin = user?.role === 'admin';
 
   return (
-    <div className="page-body pb-12">
-      {/* Navbar */}
-      <header className="page-header">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16 items-center">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 gold-gradient rounded-xl flex items-center justify-center shadow-md shadow-gold-300/30">
-                <Trophy className="text-white w-5 h-5" />
-              </div>
-              <span className="font-bold text-xl tracking-tight gold-gradient-text">SISFO CUP</span>
-            </div>
-            <Button variant="ghost" onClick={handleLogout} className="text-neutral-500 hover:text-red-600 hover:bg-red-50 rounded-xl">
-              <LogOut className="w-4 h-4 mr-2" />
-              Keluar
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <AppLayout>
+      <div className="space-y-6">
         {/* Welcome */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-neutral-900">
-            Selamat datang, <span className="gold-gradient-text">{user?.name}</span> 👋
-          </h1>
-          <p className="text-neutral-400 mt-1 text-sm">Ringkasan absensi dan perizinan hari ini.</p>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-neutral-800">
+              Selamat datang, <span className="gold-text">{user?.name}</span>
+            </h1>
+            <p className="text-neutral-500 text-xs mt-0.5">Ringkasan absensi dan perizinan hari ini.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {myShift && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-gold-50 text-gold-700 border border-gold-200">
+                <Clock className="w-3 h-3" />
+                {myShift.shift_name} — {myShift.end_time.substring(0, 5)}
+              </span>
+            )}
+            {isAdmin && activePermission && (
+              <>
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold border ${activePermission.status === 'menunggu' ? 'bg-gold-50 text-gold-700 border-gold-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                  {activePermission.status === 'menunggu' ? <Clock3 className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
+                  Izin {activePermission.status === 'menunggu' ? 'Ditinjau' : 'Disetujui'}
+                </span>
+                {activePermission.status === 'disetujui' && (
+                  <Button variant="gold-outline" size="sm" className="rounded-full h-7 text-[10px] px-2.5" onClick={handleReturnFromPermission} disabled={isReturning}>
+                    <MapPin className="w-2.5 h-2.5 mr-1" />
+                    Kembali
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         {/* Stats Grid - Admin Only */}
         {isAdmin && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
-              <div className="card-elegant p-5 border-l-4 border-l-emerald-400">
-                <p className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest mb-2">Total Hadir</p>
-                <p className="text-3xl font-bold text-neutral-900">{stats.hadir}<span className="text-sm font-normal text-neutral-300 ml-1">org</span></p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="card-attendance p-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">Hadir</p>
+                  <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-500" />
+                  </div>
+                </div>
+                <p className="text-xl font-bold text-neutral-900">{stats.hadir}<span className="text-xs font-normal text-neutral-400 ml-1">org</span></p>
               </div>
-              <div className="card-elegant p-5 border-l-4 border-l-gold-400">
-                <p className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest mb-2">Sedang Izin</p>
-                <p className="text-3xl font-bold text-neutral-900">{stats.izin}<span className="text-sm font-normal text-neutral-300 ml-1">org</span></p>
+              <div className="card-attendance p-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">Izin</p>
+                  <div className="w-7 h-7 rounded-lg bg-gold-50 flex items-center justify-center">
+                    <FileText className="w-3.5 h-3.5 text-gold-500" />
+                  </div>
+                </div>
+                <p className="text-xl font-bold text-neutral-900">{stats.izin}<span className="text-xs font-normal text-neutral-400 ml-1">org</span></p>
               </div>
-              <div className="card-elegant p-5 border-l-4 border-l-red-300">
-                <p className="text-[11px] font-semibold text-neutral-400 uppercase tracking-widest mb-2">Belum Absen</p>
-                <p className="text-3xl font-bold text-neutral-900">{stats.belum}<span className="text-sm font-normal text-neutral-300 ml-1">org</span></p>
+              <div className="card-attendance p-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">Belum</p>
+                  <div className="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center">
+                    <Clock className="w-3.5 h-3.5 text-red-400" />
+                  </div>
+                </div>
+                <p className="text-xl font-bold text-neutral-900">{stats.belum}<span className="text-xs font-normal text-neutral-400 ml-1">org</span></p>
               </div>
             </div>
 
             {/* Statistik per Shift */}
-            <div className="mb-8">
-              <h2 className="text-sm font-bold text-neutral-700 mb-4 flex items-center gap-2 uppercase tracking-wider">
-                <Clock className="w-4 h-4 text-gold-500" />
-                Statistik per Shift
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {shiftStats.map((s, idx) => (
-                  <div key={idx} className="card-elegant overflow-hidden">
-                    <div className="px-4 py-3 bg-gradient-to-r from-neutral-50 to-gold-50/40 border-b border-neutral-100">
-                      <h3 className="text-sm font-bold text-neutral-800 truncate">{s.shift_name}</h3>
-                    </div>
-                    <div className="p-4 space-y-2.5">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-neutral-400">Total</span>
-                        <span className="font-semibold text-neutral-700 text-xs bg-neutral-100 px-2 py-0.5 rounded-full">{s.total_members}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-emerald-500">Hadir</span>
-                        <span className="font-semibold text-emerald-700 text-xs bg-emerald-50 px-2 py-0.5 rounded-full">{s.total_hadir}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs text-gold-600">Izin</span>
-                        <span className="font-semibold text-gold-700 text-xs bg-gold-50 px-2 py-0.5 rounded-full">{s.total_izin}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {shiftStats.length === 0 && (
-                  <div className="col-span-full p-6 border-2 border-dashed border-neutral-200 rounded-2xl text-center text-neutral-400 text-sm">
-                    Memuat data statistik shift...
-                  </div>
-                )}
+            <div className="card-attendance overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-neutral-100">
+                <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5" />
+                  Statistik per Shift
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Shift</TableHead>
+                      <TableHead className="text-center w-20">Total</TableHead>
+                      <TableHead className="text-center w-20 text-emerald-600">Hadir</TableHead>
+                      <TableHead className="text-center w-20 text-gold-600">Izin</TableHead>
+                      <TableHead className="text-center w-20 text-red-400">Belum</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {shiftStats.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-8 text-neutral-400 text-sm">Memuat data...</TableCell>
+                      </TableRow>
+                    ) : (
+                      shiftStats.map(s => {
+                        const belum = Math.max(0, Number(s.total_members) - Number(s.total_hadir) - Number(s.total_izin));
+                        return (
+                          <TableRow key={s.shift_id || 'none'}>
+                            <TableCell className="font-medium text-neutral-800">{s.shift_name}</TableCell>
+                            <TableCell className="text-center font-medium">{s.total_members}</TableCell>
+                            <TableCell className="text-center text-emerald-600 font-semibold">{s.total_hadir}</TableCell>
+                            <TableCell className="text-center text-gold-600 font-semibold">{s.total_izin}</TableCell>
+                            <TableCell className="text-center text-red-400 font-semibold">{belum}</TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
               </div>
             </div>
           </>
         )}
 
-        {/* Content Area */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* Status Izin - All Users */}
-            {activePermission && (
-              <div className={`card-elegant p-6 border-l-4 ${activePermission.status === 'menunggu' ? 'border-l-gold-400 bg-gold-50/30' : 'border-l-emerald-400 bg-emerald-50/30'}`}>
-                <div className="flex items-start gap-4">
-                  <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${activePermission.status === 'menunggu' ? 'bg-gold-100 text-gold-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                    {activePermission.status === 'menunggu' ? <Clock3 className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
-                  </div>
-                  <div className="flex-1">
-                    <h2 className="text-base font-bold text-neutral-800">
-                      Status Izin: <span className={activePermission.status === 'menunggu' ? 'text-gold-600' : 'text-emerald-600'}>
-                        {activePermission.status === 'menunggu' ? 'Sedang Ditinjau' : 'Disetujui'}
-                      </span>
-                    </h2>
-                    <p className="text-neutral-500 text-sm mt-1">
-                      {activePermission.status === 'menunggu' ? (
-                        'Pengajuan izin Anda sedang menunggu persetujuan Admin.'
-                      ) : (
-                        `Izin disetujui! Kembali sebelum pukul ${formatTime(activePermission.estimated_return)}.`
-                      )}
-                    </p>
-                    
-                    {activePermission.status === 'disetujui' && (
-                      <Button 
-                        onClick={handleReturnFromPermission}
-                        disabled={isReturning}
-                        className="mt-3 btn-gold rounded-xl h-10"
-                      >
-                        {isReturning ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <MapPin className="w-4 h-4 mr-2" />}
-                        {isReturning ? 'Memeriksa GPS...' : 'Konfirmasi Kembali'}
-                      </Button>
-                    )}
-                  </div>
+        {/* Content Area — dipisah admin vs non-admin */}
+        {isAdmin ? (
+          <>
+            {/* Baris: Aktivitas Terkini + Panel Admin */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Aktivitas Terkini — 2/3 */}
+              <div className="lg:col-span-2 card-attendance overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-neutral-100">
+                  <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Aktivitas Terkini</h3>
                 </div>
-              </div>
-            )}
-
-            {/* Shift Info - All Users */}
-            <div className="card-elegant p-6 border-l-4 border-l-gold-300 shimmer">
-              <div className="flex items-start gap-4">
-                <div className="w-11 h-11 rounded-full bg-gold-100 flex items-center justify-center shrink-0 text-gold-600">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-neutral-800">Informasi Shift Anda</h2>
-                  {myShift ? (
-                    <>
-                      <p className="text-neutral-500 text-sm mt-1">
-                        Ditugaskan pada <strong className="text-neutral-700">{myShift.shift_name}</strong>
-                      </p>
-                      <div className="mt-3 flex items-center gap-2 text-xs text-gold-700 bg-gold-50 px-3 py-2 rounded-lg border border-gold-200 w-fit">
-                        <Info className="w-3.5 h-3.5" />
-                        <span>Absen sebelum pukul <strong>{myShift.end_time.substring(0, 5)}</strong></span>
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-neutral-400 text-sm mt-1">
-                      Belum ada shift. Absensi dicatat sebagai <em>Hadir</em>.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Admin Activities */}
-            {isAdmin && (
-              <div className="card-elegant overflow-hidden">
-                <div className="px-6 py-4 border-b border-neutral-100 bg-gradient-to-r from-white to-gold-50/30">
-                  <h3 className="text-sm font-bold text-neutral-700 uppercase tracking-wider">Aktivitas Terkini</h3>
-                </div>
-                <div className="p-4">
+                <div className="max-h-[360px] overflow-y-auto">
                   {activities.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <div className="w-14 h-14 bg-neutral-100 rounded-full flex items-center justify-center mb-3">
-                        <Calendar className="w-6 h-6 text-neutral-300" />
-                      </div>
-                      <h3 className="text-sm font-medium text-neutral-600">Belum ada aktivitas</h3>
-                      <p className="text-xs text-neutral-400 mt-1">Data hari ini akan muncul di sini.</p>
+                    <div className="flex flex-col items-center justify-center py-10 text-center">
+                      <Calendar className="w-8 h-8 text-neutral-200 mb-2" />
+                      <p className="text-sm text-neutral-400">Belum ada aktivitas hari ini.</p>
                     </div>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="divide-y divide-neutral-50">
                       {activities.map((act) => (
-                        <div key={act.id} className="flex items-start gap-3 p-3 rounded-xl hover:bg-neutral-50 transition-colors">
-                          <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${act.type === 'absen' ? 'bg-emerald-50 text-emerald-500' : 'bg-gold-50 text-gold-600'}`}>
+                        <div key={act.id} className="flex items-start gap-3 px-5 py-3 hover:bg-neutral-50 transition-colors">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${act.type === 'absen' ? 'bg-emerald-50 text-emerald-500' : 'bg-gold-50 text-gold-500'}`}>
                             {act.type === 'absen' ? <Calendar className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-neutral-800 truncate">{act.user_name} <span className="text-neutral-400 font-normal">({act.user_divisi})</span></p>
+                            <p className="text-sm font-medium text-neutral-800 truncate">{act.user_name} <span className="text-neutral-400 font-normal text-xs">({act.user_divisi})</span></p>
                             <p className="text-xs text-neutral-400 mt-0.5">{act.description}</p>
                           </div>
-                          <span className="text-[11px] font-medium text-neutral-300 shrink-0">
-                            {formatTime(act.activity_time)}
-                          </span>
+                          <span className="text-xs text-neutral-400 shrink-0">{formatTime(act.activity_time)}</span>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
               </div>
-            )}
-          </div>
-          
-          {/* Sidebar Actions */}
-          <div className="space-y-5">
-            <div className="card-elegant overflow-hidden">
-              <div className="px-5 py-4 border-b border-neutral-100">
-                <h3 className="text-sm font-bold text-neutral-700 uppercase tracking-wider">Aksi Cepat</h3>
+
+              {/* Panel Admin — 1/3 */}
+              <div className="card-attendance overflow-hidden">
+                <div className="px-5 py-3.5 border-b border-neutral-100 flex items-center gap-2">
+                  <ShieldAlert className="w-3.5 h-3.5 text-gold-500" />
+                  <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Panel Admin</h3>
+                </div>
+                <div className="p-4 space-y-5">
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">Aksi Cepat</h4>
+                    <Button variant="gold" className="w-full justify-start text-left h-9 rounded-lg text-sm" onClick={() => navigate('/absen')}>
+                      <Calendar className="w-4 h-4 mr-2" />
+                      Absen Masuk
+                    </Button>
+                    <Button variant="gold-outline" className="w-full justify-start text-left h-9 rounded-lg text-sm" onClick={() => navigate('/izin')}>
+                      <FileText className="w-4 h-4 mr-2" />
+                      Ajukan Izin
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">Menu Admin</h4>
+                    <div className="space-y-0.5">
+                      {[
+                        { label: 'Rekap Absensi', icon: Calendar, path: '/admin/rekap-absensi' },
+                        { label: 'Daftar Perizinan', icon: FileText, path: '/admin/daftar-izin' },
+                        { label: 'Kelola Anggota', icon: Users, path: '/admin/anggota' },
+                        { label: 'Kelola Shift', icon: Clock, path: '/admin/shift' },
+                        { label: 'Pengaturan', icon: Settings, path: '/admin/settings' },
+                      ].map((item) => (
+                        <Button key={item.path} className="w-full justify-start text-left font-medium text-neutral-600 hover:text-gold-600 hover:bg-gold-50/50 rounded-lg h-9 text-sm" variant="ghost" onClick={() => navigate(item.path)}>
+                          <item.icon className="w-4 h-4 mr-2 text-gold-500" />
+                          {item.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="p-4 space-y-2.5">
-                <Button 
-                  className="w-full justify-start text-left font-medium btn-gold rounded-xl h-11" 
-                  onClick={() => navigate('/absen')}
-                >
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Absen Masuk
+            </div>
+          </>
+        ) : (
+          /* Non-Admin */
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-5">
+              {activePermission && (
+                <div className={`card-attendance p-5 border-l-4 ${activePermission.status === 'menunggu' ? 'border-l-gold-400' : 'border-l-emerald-400'}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${activePermission.status === 'menunggu' ? 'bg-gold-50 text-gold-500' : 'bg-emerald-50 text-emerald-500'}`}>
+                      {activePermission.status === 'menunggu' ? <Clock3 className="w-5 h-5" /> : <CheckCircle2 className="w-5 h-5" />}
+                    </div>
+                    <div className="flex-1">
+                      <h2 className="text-sm font-semibold text-neutral-800">
+                        Status Izin: <span className={activePermission.status === 'menunggu' ? 'gold-text' : 'text-emerald-600'}>
+                          {activePermission.status === 'menunggu' ? 'Sedang Ditinjau' : 'Disetujui'}
+                        </span>
+                      </h2>
+                      <p className="text-neutral-500 text-xs mt-0.5">
+                        {activePermission.status === 'menunggu'
+                          ? 'Pengajuan izin Anda sedang menunggu persetujuan Admin.'
+                          : `Kembali sebelum pukul ${formatTime(activePermission.estimated_return)}.`}
+                      </p>
+                      {activePermission.status === 'disetujui' && (
+                        <Button onClick={handleReturnFromPermission} disabled={isReturning} variant="gold" className="mt-3 h-9 text-xs rounded-lg">
+                          {isReturning ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <MapPin className="w-3.5 h-3.5 mr-1.5" />}
+                          {isReturning ? 'Memeriksa GPS...' : 'Konfirmasi Kembali'}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="card-attendance overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-neutral-100">
+                <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Aksi Cepat</h3>
+              </div>
+              <div className="p-4 space-y-2">
+                <Button variant="gold" className="w-full justify-start text-left h-10 rounded-lg text-sm" onClick={() => navigate('/absen')}>
+                  <Calendar className="w-4 h-4 mr-2" /> Absen Masuk
                 </Button>
-                <Button 
-                  className="w-full justify-start text-left font-medium btn-gold-outline rounded-xl h-11" 
-                  variant="outline"
-                  onClick={() => navigate('/izin')}
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  Ajukan Izin
+                <Button variant="gold-outline" className="w-full justify-start text-left h-10 rounded-lg text-sm" onClick={() => navigate('/izin')}>
+                  <FileText className="w-4 h-4 mr-2" /> Ajukan Izin
                 </Button>
               </div>
             </div>
+          </div>
+        )}
 
-            {isAdmin && (
-              <div className="card-elegant overflow-hidden">
-                <div className="px-5 py-4 border-b border-neutral-100 flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 text-gold-500" />
-                  <h3 className="text-sm font-bold text-neutral-700 uppercase tracking-wider">Menu Admin</h3>
-                </div>
-                <div className="p-4 space-y-1.5">
-                  {[
-                    { label: 'Rekap Absensi', icon: Calendar, path: '/admin/rekap-absensi' },
-                    { label: 'Daftar Perizinan', icon: FileText, path: '/admin/daftar-izin' },
-                    { label: 'Kelola Anggota', icon: Users, path: '/admin/anggota' },
-                    { label: 'Kelola Shift', icon: Clock, path: '/admin/shift' },
-                    { label: 'Pengaturan', icon: Settings, path: '/admin/settings' },
-                  ].map((item) => (
-                    <Button 
-                      key={item.path}
-                      className="w-full justify-start text-left font-medium text-neutral-600 hover:text-gold-700 hover:bg-gold-50/50 rounded-xl h-10" 
-                      variant="ghost"
-                      onClick={() => navigate(item.path)}
-                    >
-                      <item.icon className="w-4 h-4 mr-2 text-gold-500" />
-                      {item.label}
-                    </Button>
-                  ))}
-                </div>
+        {/* Daftar Anggota per Shift — untuk semua user */}
+        <div className="card-attendance overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-neutral-100 flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider flex items-center gap-2">
+              <Users className="w-4 h-4" />
+              Daftar Anggota per Shift
+            </h3>
+          </div>
+          <div className="p-5 space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {shifts.map(s => (
+                <Button 
+                  key={s.id} 
+                  variant={activeShiftId === s.id ? 'gold' : 'outline'} 
+                  size="sm" 
+                  className="rounded-full text-xs"
+                  onClick={() => fetchShiftMembers(s.id)}
+                >
+                  {s.name}
+                </Button>
+              ))}
+              {shifts.length === 0 && (
+                <p className="text-xs text-neutral-400">Belum ada shift yang tersedia.</p>
+              )}
+            </div>
+            {activeShiftId && (
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold text-neutral-800 mb-3 border-b pb-2">
+                  {shifts.find(s => s.id === activeShiftId)?.name}
+                </h4>
+                {isLoadingShiftMembers ? (
+                  <div className="py-4 text-center">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto text-neutral-400" />
+                  </div>
+                ) : shiftMembers.length > 0 ? (
+                  <ul className="space-y-2">
+                    {shiftMembers.map(m => (
+                      <li key={m.id} className="flex items-center gap-2 text-sm text-neutral-600">
+                        <span className="w-1.5 h-1.5 rounded-full bg-gold-400 shrink-0"></span>
+                        <span className="font-medium text-neutral-800">{m.name}</span>
+                        <span className="text-neutral-400">— {m.divisi}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-neutral-400 italic">Tidak ada anggota di shift ini.</p>
+                )}
               </div>
             )}
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </AppLayout>
   );
 }

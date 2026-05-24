@@ -43,6 +43,17 @@ export default function Login() {
     setIsLoading(true);
     
     try {
+      const { data: pwValid, error: pwErr } = await supabase.rpc('verify_password', {
+        p_name: name,
+        p_password: password
+      });
+
+      if (pwErr || !pwValid) {
+        toast.error('Password salah!');
+        setIsLoading(false);
+        return;
+      }
+
       const deviceId = getDeviceId();
       const { data, error } = await supabase.rpc('login_user', { p_name: name, p_device_id: deviceId });
         
@@ -63,12 +74,6 @@ export default function Login() {
       }
       
       const userData = data[0];
-      
-      if (userData.password_hash !== password) {
-        toast.error('Password salah!');
-        setIsLoading(false);
-        return;
-      }
       
       if (!userData.is_active) {
         toast.error('Akun Anda dinonaktifkan.');
@@ -95,7 +100,7 @@ export default function Login() {
       
       toast.success('Login berhasil!');
       navigate('/dashboard');
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error('Gagal terhubung ke server.');
     } finally {
       setIsLoading(false);
@@ -103,73 +108,65 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-white via-neutral-50 to-gold-50/50 p-4 relative overflow-hidden">
-      {/* Decorative elements */}
-      <div className="absolute top-[-15%] left-[-10%] w-[500px] h-[500px] bg-gold-200/20 rounded-full blur-3xl"></div>
-      <div className="absolute bottom-[-20%] right-[-10%] w-[400px] h-[400px] bg-gold-300/15 rounded-full blur-3xl"></div>
-      <div className="absolute top-[30%] right-[10%] w-32 h-32 border-2 border-gold-200/30 rounded-full"></div>
-      <div className="absolute bottom-[20%] left-[15%] w-20 h-20 border border-gold-300/20 rounded-2xl rotate-45"></div>
-
-      <Card className="w-full max-w-md shadow-2xl shadow-gold-200/20 border-neutral-100 bg-white/90 backdrop-blur-xl relative z-10 rounded-3xl">
-        <CardHeader className="space-y-4 text-center pb-6 pt-8">
-          <div className="w-16 h-16 gold-gradient rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-gold-300/30 transform -rotate-3 hover:rotate-0 transition-transform duration-300">
-            <Trophy className="text-white w-9 h-9" />
+    <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center p-4">
+      <Card className="w-full max-w-sm shadow-sm border-neutral-200/60 bg-white rounded-xl">
+        <CardHeader className="text-center pb-4 pt-8">
+          <div className="w-12 h-12 bg-gold-500 rounded-xl flex items-center justify-center mx-auto shadow-sm mb-4">
+            <Trophy className="text-white w-6 h-6" />
           </div>
-          <CardTitle className="text-3xl font-bold tracking-tight gold-gradient-text">
+          <CardTitle className="text-xl font-bold text-neutral-800">
             SISFO CUP
           </CardTitle>
-          <CardDescription className="text-neutral-400 font-medium text-sm">
+          <CardDescription className="text-neutral-500 text-xs mt-1">
             Sistem Absensi & Perizinan Kepanitiaan
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="name" className="text-neutral-600 font-semibold text-xs uppercase tracking-wider">Nama Lengkap</Label>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="name" className="text-neutral-500 text-xs font-medium">Nama Lengkap</Label>
               <Input 
                 id="name" 
-                placeholder="Misal: Budi Santoso" 
-                className="input-elegant h-12 text-sm"
+                placeholder="Masukkan nama" 
+                className="h-10 text-sm"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-neutral-600 font-semibold text-xs uppercase tracking-wider">Password</Label>
-                <a href="#" className="text-[11px] text-gold-600 font-semibold hover:text-gold-800 transition-colors">Lupa Password?</a>
-              </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="text-neutral-500 text-xs font-medium">Password</Label>
               <Input 
                 id="password" 
                 type="password" 
                 placeholder="••••••••" 
-                className="input-elegant h-12 text-sm"
+                className="h-10 text-sm"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
             <Button 
               type="submit" 
-              className="w-full h-12 rounded-xl btn-gold text-base"
+              variant="gold"
+              className="w-full h-10 rounded-lg text-sm"
               disabled={isLoading}
             >
               {isLoading ? (
                 <div className="flex items-center justify-center gap-2">
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   <span>Memproses...</span>
                 </div>
               ) : (
                 <div className="flex items-center justify-center gap-2">
-                  <LogIn className="w-5 h-5" />
+                  <LogIn className="w-4 h-4" />
                   <span>Masuk Sistem</span>
                 </div>
               )}
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="justify-center pt-2 pb-7">
+        <CardFooter className="justify-center pb-7 text-center">
           <p className="text-xs text-neutral-400">
-            Belum punya akun? Hubungi Admin.
+            Belum punya akun? <span className="font-medium text-neutral-600">Hubungi Admin.</span>
           </p>
         </CardFooter>
       </Card>

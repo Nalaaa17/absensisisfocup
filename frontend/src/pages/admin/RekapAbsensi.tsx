@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Search, Download, Filter, Trash2 } from 'lucide-react';
+import { Spinner } from '@/components/ui/Spinner';
+import { Pagination } from '@/components/ui/Pagination';
+import { Search, Download, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { exportToCSV } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
+import { PageLayout } from '@/components/layout/PageLayout';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 interface Attendance {
   id: string;
@@ -20,42 +24,50 @@ interface Attendance {
 }
 
 export default function RekapAbsensi() {
-  const navigate = useNavigate();
   const { user } = useAuthStore();
   
   const [data, setData] = useState<Attendance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  
+  const [deleteModal, setDeleteModal] = useState<{isOpen: boolean, id: string | null}>({isOpen: false, id: null});
 
   useEffect(() => {
-    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
-      navigate('/dashboard');
-      return;
-    }
-    fetchAttendance();
-  }, [user]);
+    supabase.rpc('get_server_date').then(({ data }) => {
+      if (data?.[0]) setSelectedDate(data[0].today);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (selectedDate) fetchAttendance();
+  }, [user, selectedDate]);
 
   const fetchAttendance = async () => {
     if (!user) return;
     setIsLoading(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
       const { data: attData, error } = await supabase.rpc('get_all_attendance', {
         p_admin_id: user.id,
-        p_date: today
+        p_date: selectedDate
       });
       if (error) throw error;
       if (attData) setData(attData);
-    } catch (err: any) {
-      toast.error(`Gagal memuat data absensi: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal memuat data absensi: ${err.message}`);
+      } else {
+        toast.error('Gagal memuat data absensi');
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const executeDelete = async (id: string) => {
     if (!user) return;
-    if (!confirm('Hapus data absensi ini?')) return;
     try {
       const { error } = await supabase.rpc('delete_attendance', {
         p_admin_id: user.id,
@@ -64,9 +76,17 @@ export default function RekapAbsensi() {
       if (error) throw error;
       toast.success('Data absensi dihapus');
       fetchAttendance();
-    } catch (err: any) {
-      toast.error(`Gagal menghapus: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal menghapus: ${err.message}`);
+      } else {
+        toast.error('Gagal menghapus data absensi');
+      }
     }
+  };
+
+  const handleDelete = (id: string) => {
+    setDeleteModal({isOpen: true, id});
   };
 
   const filteredData = data.filter(item => 
@@ -74,43 +94,65 @@ export default function RekapAbsensi() {
     item.user_divisi.toLowerCase().includes(search.toLowerCase())
   );
 
-  return (
-    <div className="page-body">
-      <header className="page-header p-4">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="rounded-full hover:bg-gold-50">
-              <ArrowLeft className="w-5 h-5 text-neutral-500" />
-            </Button>
-            <h1 className="font-bold text-lg text-neutral-800">Rekap Absensi</h1>
-          </div>
-          <Button variant="outline" size="sm" className="hidden sm:flex btn-gold-outline rounded-xl text-xs">
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Export
-          </Button>
-        </div>
-      </header>
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const paginatedData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-8">
-        <div className="card-elegant overflow-hidden">
-          <div className="p-4 border-b border-neutral-100 flex flex-col sm:flex-row gap-4 justify-between items-center bg-gradient-to-r from-neutral-50 to-gold-50/30">
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, selectedDate]);
+
+  const handleExport = () => {
+    if (filteredData.length === 0) {
+      toast.error('Tidak ada data untuk diexport');
+      return;
+    }
+    const exportData = filteredData.map(item => ({
+      Nama: item.user_name,
+      Divisi: item.user_divisi,
+      Jam_Masuk: new Date(item.check_in_time).toLocaleString('id-ID'),
+      Lat: item.location_lat,
+      Lng: item.location_lng,
+      Status: item.status
+    }));
+    exportToCSV(exportData, `Rekap_Absensi_${new Date().toISOString().split('T')[0]}`);
+    toast.success('Data berhasil diexport');
+  };
+
+  return (
+    <PageLayout 
+      title="Rekap Absensi"
+      actions={
+        <Button variant="gold-outline" size="sm" onClick={handleExport} className="hidden sm:flex rounded-lg text-xs">
+          <Download className="w-3.5 h-3.5 mr-1.5" />
+          Export
+        </Button>
+      }
+    >
+      <div className="card-attendance overflow-hidden">
+        <div className="p-4 border-b border-neutral-100 flex flex-col sm:flex-row gap-4 justify-between items-center">
             <div className="flex w-full gap-2 sm:max-w-md">
-              <div className="relative flex-1">
+              <div className="relative flex-1 sm:max-w-xs">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-300 w-4 h-4" />
                 <Input 
                   placeholder="Cari nama atau divisi..." 
-                  className="pl-9 input-elegant" 
+                  className="pl-9" 
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
+              <Input 
+                type="date" 
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="sm:max-w-[150px]"
+              />
             </div>
           </div>
           
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="table-header-gold">
+                <TableRow>
                   <TableHead className="w-[200px]">Nama</TableHead>
                   <TableHead>Divisi</TableHead>
                   <TableHead>Jam Masuk</TableHead>
@@ -122,25 +164,26 @@ export default function RekapAbsensi() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12 text-neutral-400">
-                      <div className="w-6 h-6 border-2 border-gold-300 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                      Memuat data...
+                    <TableCell colSpan={6} className="text-center py-12">
+                      <Spinner label="Memuat data..." />
                     </TableCell>
                   </TableRow>
-                ) : filteredData.length === 0 ? (
+                ) : paginatedData.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-12 text-neutral-400">Tidak ada data absensi.</TableCell>
                   </TableRow>
                 ) : (
-                  filteredData.map((item) => (
-                    <TableRow key={item.id} className="hover:bg-gold-50/20 transition-colors">
+                  paginatedData.map((item) => (
+                    <TableRow key={item.id} className="hover:bg-neutral-50 transition-colors">
                       <TableCell className="font-medium text-neutral-800">{item.user_name}</TableCell>
                       <TableCell className="text-neutral-500 text-sm">{item.user_divisi}</TableCell>
                       <TableCell className="font-medium text-neutral-700">
                         {new Date(item.check_in_time).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
                       </TableCell>
                       <TableCell className="text-neutral-400 text-xs font-mono">
-                        {item.location_lat.toFixed(4)}, {item.location_lng.toFixed(4)}
+                        {item.location_lat != null && item.location_lng != null 
+                          ? `${item.location_lat.toFixed(4)}, ${item.location_lng.toFixed(4)}`
+                          : '-'}
                       </TableCell>
                       <TableCell className="text-right">
                         {item.status === 'hadir' && <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px]">Hadir</Badge>}
@@ -162,9 +205,27 @@ export default function RekapAbsensi() {
                 )}
               </TableBody>
             </Table>
+            
+            {!isLoading && totalPages > 1 && (
+              <div className="border-t border-neutral-100">
+                <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+              </div>
+            )}
           </div>
         </div>
-      </main>
-    </div>
+        
+      <ConfirmModal
+        isOpen={deleteModal.isOpen}
+        title="Hapus Data Absensi"
+        description="Apakah Anda yakin ingin menghapus data absensi ini? Tindakan ini tidak dapat dibatalkan."
+        onCancel={() => setDeleteModal({isOpen: false, id: null})}
+        onConfirm={() => {
+          if (deleteModal.id) {
+            executeDelete(deleteModal.id);
+            setDeleteModal({isOpen: false, id: null});
+          }
+        }}
+      />
+    </PageLayout>
   );
 }

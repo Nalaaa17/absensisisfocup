@@ -1,0 +1,53 @@
+import type { ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { LogOut, Trophy } from 'lucide-react';
+import { useAuthStore } from '@/stores/authStore';
+import { supabase } from '@/lib/supabase';
+
+interface AppLayoutProps {
+  children: ReactNode;
+}
+
+export function AppLayout({ children }: AppLayoutProps) {
+  const navigate = useNavigate();
+  const { user, logout } = useAuthStore();
+
+  const handleLogout = async () => {
+    const deviceId = localStorage.getItem('device_id');
+    if (user && deviceId) {
+      try {
+        await supabase.rpc('logout_user', { p_name: user.name, p_device_id: deviceId });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    logout();
+    navigate('/');
+  };
+
+  return (
+    <div className="page-body pb-12">
+      <header className="page-header">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16 items-center">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-gold-500 rounded-lg flex items-center justify-center shadow-sm">
+                <Trophy className="text-white w-4 h-4" />
+              </div>
+              <span className="font-bold text-lg text-neutral-800">SISFO CUP</span>
+            </div>
+            <Button variant="ghost" onClick={handleLogout} className="text-neutral-500 hover:text-red-600 hover:bg-red-50 rounded-xl">
+              <LogOut className="w-4 h-4 mr-2" />
+              Keluar
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {children}
+      </main>
+    </div>
+  );
+}

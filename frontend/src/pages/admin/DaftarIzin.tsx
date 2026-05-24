@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Search, Download, CheckCircle, XCircle, Image as ImageIcon, X, Trash2 } from 'lucide-react';
+import { Spinner } from '@/components/ui/Spinner';
+import { Pagination } from '@/components/ui/Pagination';
+import { Search, Download, CheckCircle, Image as ImageIcon, X, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { exportToCSV } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
+import { PageLayout } from '@/components/layout/PageLayout';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 interface Permission {
   id: string;
@@ -23,35 +27,44 @@ interface Permission {
 }
 
 export default function DaftarIzin() {
-  const navigate = useNavigate();
   const { user } = useAuthStore();
   
   const [data, setData] = useState<Permission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const [selectedPermission, setSelectedPermission] = useState<Permission | null>(null);
+  
+  const [deleteModal, setDeleteModal] = useState<{isOpen: boolean, id: string | null}>({isOpen: false, id: null});
 
   useEffect(() => {
-    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
-      navigate('/dashboard');
-      return;
-    }
-    fetchPermissions();
-  }, [user]);
+    supabase.rpc('get_server_date').then(({ data }) => {
+      if (data?.[0]) setSelectedDate(data[0].today);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (selectedDate) fetchPermissions();
+  }, [user, selectedDate]);
 
   const fetchPermissions = async () => {
     if (!user) return;
     setIsLoading(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
       const { data: permData, error } = await supabase.rpc('get_all_permissions', {
         p_admin_id: user.id,
-        p_date: today
+        p_date: selectedDate
       });
       if (error) throw error;
       if (permData) setData(permData);
-    } catch (err: any) {
-      toast.error(`Gagal memuat daftar izin: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal memuat data perizinan: ${err.message}`);
+      } else {
+        toast.error('Gagal memuat data perizinan');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -68,8 +81,12 @@ export default function DaftarIzin() {
       if (error) throw error;
       toast.success('Status izin berhasil diperbarui');
       fetchPermissions();
-    } catch (err: any) {
-      toast.error(`Gagal mengubah status: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal update status: ${err.message}`);
+      } else {
+        toast.error('Gagal update status');
+      }
     }
   };
 
@@ -78,41 +95,65 @@ export default function DaftarIzin() {
     item.user_divisi.toLowerCase().includes(search.toLowerCase())
   );
 
-  return (
-    <div className="page-body pb-12 relative">
-      <header className="page-header p-4">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="rounded-full hover:bg-gold-50">
-              <ArrowLeft className="w-5 h-5 text-neutral-500" />
-            </Button>
-            <h1 className="font-bold text-lg text-neutral-800">Daftar Perizinan</h1>
-          </div>
-          <Button variant="outline" size="sm" className="hidden sm:flex btn-gold-outline rounded-xl text-xs">
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Export
-          </Button>
-        </div>
-      </header>
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const paginatedData = filteredData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-8">
-        <div className="card-elegant overflow-hidden">
-          <div className="p-4 border-b border-neutral-100 flex flex-col sm:flex-row gap-4 justify-between items-center bg-gradient-to-r from-neutral-50 to-gold-50/30">
-            <div className="relative w-full sm:max-w-md">
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, selectedDate]);
+
+  const handleExport = () => {
+    if (filteredData.length === 0) {
+      toast.error('Tidak ada data untuk diexport');
+      return;
+    }
+    const exportData = filteredData.map(item => ({
+      Nama: item.user_name,
+      Divisi: item.user_divisi,
+      Tujuan: item.destination,
+      Alasan: item.reason,
+      Berangkat: new Date(item.created_at).toLocaleString('id-ID'),
+      Estimasi_Kembali: new Date(item.estimated_return).toLocaleString('id-ID'),
+      Kembali_Aktual: item.actual_return ? new Date(item.actual_return).toLocaleString('id-ID') : '-',
+      Status: item.status
+    }));
+    exportToCSV(exportData, `Daftar_Izin_${new Date().toISOString().split('T')[0]}`);
+    toast.success('Data berhasil diexport');
+  };
+
+  return (
+    <PageLayout 
+      title="Daftar Perizinan"
+      actions={
+        <Button variant="gold-outline" size="sm" onClick={handleExport} className="hidden sm:flex rounded-lg text-xs">
+          <Download className="w-3.5 h-3.5 mr-1.5" />
+          Export
+        </Button>
+      }
+    >
+      <div className="card-attendance overflow-hidden">
+        <div className="p-4 border-b border-neutral-100 flex flex-col sm:flex-row gap-4 justify-between items-center">
+            <div className="relative flex-1 sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-300 w-4 h-4" />
               <Input 
                 placeholder="Cari nama atau divisi..." 
-                className="pl-9 input-elegant" 
+                className="pl-9" 
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
+            <Input 
+              type="date" 
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="sm:max-w-[150px]"
+            />
           </div>
           
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow className="table-header-gold">
+                <TableRow>
                   <TableHead className="w-[180px]">Nama</TableHead>
                   <TableHead>Divisi</TableHead>
                   <TableHead>Tujuan & Alasan</TableHead>
@@ -124,18 +165,17 @@ export default function DaftarIzin() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12 text-neutral-400">
-                      <div className="w-6 h-6 border-2 border-gold-300 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                      Memuat data...
+                    <TableCell colSpan={6} className="text-center py-12">
+                      <Spinner label="Memuat data..." />
                     </TableCell>
                   </TableRow>
-                ) : filteredData.length === 0 ? (
+                ) : paginatedData.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-12 text-neutral-400">Tidak ada perizinan hari ini.</TableCell>
                   </TableRow>
                 ) : (
-                  filteredData.map((item) => (
-                    <TableRow key={item.id} className="hover:bg-gold-50/20 transition-colors">
+                  paginatedData.map((item) => (
+                    <TableRow key={item.id} className="hover:bg-neutral-50 transition-colors">
                       <TableCell className="font-medium text-neutral-800">{item.user_name}</TableCell>
                       <TableCell className="text-neutral-500 text-sm">{item.user_divisi}</TableCell>
                       <TableCell>
@@ -143,18 +183,18 @@ export default function DaftarIzin() {
                         <div className="text-xs text-neutral-400 line-clamp-1">{item.reason}</div>
                         <Button 
                           variant="link" 
-                          className="h-auto p-0 text-[11px] text-gold-600 mt-0.5 font-semibold"
+                          className="h-auto p-0 text-xs text-gold-600 mt-0.5 font-semibold"
                           onClick={() => setSelectedPermission(item)}
                         >
                           Lihat Detail
                         </Button>
                       </TableCell>
                       <TableCell>
-                        <div className="text-[11px] text-neutral-400">Keluar: {new Date(item.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
+                        <div className="text-xs text-neutral-400">Keluar: {new Date(item.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
                         <div className="text-sm font-medium text-neutral-700">Kembali: {new Date(item.estimated_return).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</div>
                       </TableCell>
                       <TableCell>
-                        {item.status === 'menunggu' && <Badge className="badge-gold text-[11px]">Menunggu</Badge>}
+                        {item.status === 'menunggu' && <Badge variant="gold" className="text-[11px]">Menunggu</Badge>}
                         {item.status === 'disetujui' && <Badge className="bg-blue-50 text-blue-700 border border-blue-200 text-[11px]">Izin</Badge>}
                         {item.status === 'kembali' && <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px]">Kembali</Badge>}
                         {item.status === 'terlambat_kembali' && <Badge variant="destructive" className="text-[11px]">Terlambat</Badge>}
@@ -163,7 +203,7 @@ export default function DaftarIzin() {
                       <TableCell className="text-right space-x-2 whitespace-nowrap">
                         {item.status === 'menunggu' && (
                           <>
-                            <Button size="sm" onClick={() => handleUpdateStatus(item.id, 'disetujui')} className="btn-gold rounded-lg text-xs mr-1">
+                            <Button size="sm" variant="gold" onClick={() => handleUpdateStatus(item.id, 'disetujui')} className="rounded-lg text-xs mr-1">
                               Setujui
                             </Button>
                             <Button size="sm" variant="outline" onClick={() => handleUpdateStatus(item.id, 'ditolak')} className="text-red-500 border-red-200 hover:bg-red-50 rounded-lg text-xs">
@@ -177,23 +217,12 @@ export default function DaftarIzin() {
                           </Button>
                         )}
                         {(item.status === 'kembali' || item.status === 'terlambat_kembali' || item.status === 'ditolak') && (
-                          <span className="text-[11px] text-neutral-300 italic">Selesai</span>
+                          <span className="text-xs text-neutral-300 italic">Selesai</span>
                         )}
                         
                         <Button 
                           variant="ghost" 
-                          size="icon" 
-                          onClick={() => {
-                            if (confirm('Hapus perizinan ini?')) {
-                              supabase.rpc('delete_permission', {
-                                p_admin_id: user!.id,
-                                p_permission_id: item.id
-                              }).then(({ error }) => {
-                                if (error) toast.error(`Gagal: ${error.message}`);
-                                else { toast.success('Dihapus'); fetchPermissions(); }
-                              });
-                            }
-                          }}
+                          onClick={() => setDeleteModal({isOpen: true, id: item.id})}
                           className="text-red-300 hover:text-red-500 hover:bg-red-50 h-8 w-8 ml-1 rounded-lg"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -204,15 +233,20 @@ export default function DaftarIzin() {
                 )}
               </TableBody>
             </Table>
+
+            {!isLoading && totalPages > 1 && (
+              <div className="border-t border-neutral-100">
+                <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+              </div>
+            )}
           </div>
         </div>
-      </main>
 
       {/* Modal */}
       {selectedPermission && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 border-b border-neutral-100 flex justify-between items-center bg-gradient-to-r from-white to-gold-50/30">
+            <div className="px-5 py-3.5 border-b border-neutral-100 flex justify-between items-center">
               <h2 className="font-bold text-base text-neutral-800">Detail Perizinan</h2>
               <Button variant="ghost" size="icon" onClick={() => setSelectedPermission(null)} className="rounded-full h-8 w-8 hover:bg-gold-50">
                 <X className="w-4 h-4 text-neutral-400" />
@@ -260,13 +294,44 @@ export default function DaftarIzin() {
             </div>
 
             <div className="p-4 border-t border-neutral-100 flex justify-end">
-              <Button onClick={() => setSelectedPermission(null)} className="btn-gold-outline rounded-xl text-sm" variant="outline">
+              <Button onClick={() => setSelectedPermission(null)} variant="gold-outline" className="text-sm rounded-lg">
                 Tutup
               </Button>
             </div>
           </div>
         </div>
       )}
-    </div>
+
+      <ConfirmModal
+        isOpen={deleteModal.isOpen}
+        title="Hapus Perizinan"
+        description="Apakah Anda yakin ingin menghapus data perizinan ini? Tindakan ini tidak dapat dibatalkan."
+        onCancel={() => setDeleteModal({isOpen: false, id: null})}
+        onConfirm={async () => {
+          if (deleteModal.id && user) {
+            try {
+              const { error } = await supabase.rpc('delete_permission', {
+                p_admin_id: user.id,
+                p_permission_id: deleteModal.id
+              });
+              if (error) {
+                toast.error(`Gagal: ${error.message}`);
+              } else {
+                toast.success('Dihapus');
+                fetchPermissions();
+              }
+            } catch (err: unknown) {
+              if (err instanceof Error) {
+                toast.error(`Gagal: ${err.message}`);
+              } else {
+                toast.error('Gagal menghapus perizinan');
+              }
+            } finally {
+              setDeleteModal({isOpen: false, id: null});
+            }
+          }
+        }}
+      />
+    </PageLayout>
   );
 }

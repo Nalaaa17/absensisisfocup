@@ -1,186 +1,44 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
 @theme {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
-
-  /* Gold Design System */
   --color-gold-50: #fefce8;
   --color-gold-100: #fef9c3;
   --color-gold-200: #fef08a;
   --color-gold-300: #fde047;
   --color-gold-400: #facc15;
-  --color-gold-500: #eab308;
-  --color-gold-600: #ca8a04;
-  --color-gold-700: #a16207;
-  --color-gold-800: #854d0e;
-  --color-gold-900: #713f12;
+  --color-gold-500: #ca8a04;
+  --color-gold-600: #a16207;
+  --color-gold-700: #854d0e;
+  --font-sans: 'Geist Variable', sans-serif;
 }
 
 body {
-  @apply bg-white text-neutral-900;
-}
-
-@layer base {
-  .theme {
-    --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
-  }
-  :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
-  }
-  .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
-  }
-  * {
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-  html {
-    @apply font-sans;
-  }
-}
-
-/* ========= GLOBAL GOLD THEME UTILITIES ========= */
-.gold-gradient {
-  background: linear-gradient(135deg, #ca8a04, #eab308, #facc15);
-}
-
-.gold-gradient-text {
-  background: linear-gradient(135deg, #854d0e, #ca8a04, #eab308);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.gold-border {
-  border-image: linear-gradient(135deg, #ca8a04, #eab308) 1;
+  @apply bg-[#f8f9fa] text-neutral-800 font-sans antialiased;
 }
 
 .page-header {
-  @apply bg-white/80 backdrop-blur-lg border-b border-neutral-100 sticky top-0 z-30;
+  @apply bg-white/90 backdrop-blur-md border-b border-neutral-200/50 sticky top-0 z-30;
 }
 
 .page-body {
-  @apply min-h-screen bg-gradient-to-br from-white via-neutral-50/50 to-gold-50/30 flex flex-col;
+  @apply min-h-screen bg-[#f8f9fa] flex flex-col;
 }
 
-.card-elegant {
-  @apply bg-white border border-neutral-100 shadow-sm rounded-2xl hover:shadow-md transition-shadow duration-300;
+.card-attendance {
+  @apply bg-white rounded-xl border border-neutral-200/60 shadow-sm;
 }
 
 .btn-gold {
-  @apply bg-gradient-to-r from-gold-600 to-gold-500 hover:from-gold-700 hover:to-gold-600 text-white font-semibold shadow-lg shadow-gold-200/50 transition-all active:scale-[0.98];
+  @apply bg-gold-500 hover:bg-gold-600 text-white font-medium shadow-sm transition-all;
 }
 
-.btn-gold-outline {
-  @apply border-2 border-gold-400 text-gold-700 hover:bg-gold-50 font-semibold transition-all;
-}
-
-.input-elegant {
-  @apply bg-neutral-50/50 border-neutral-200 focus:border-gold-400 focus:ring-gold-400/30 transition-all rounded-xl;
-}
-
-.table-header-gold {
-  @apply bg-gradient-to-r from-neutral-50 to-gold-50/50 text-neutral-600 font-semibold text-xs uppercase tracking-wider;
-}
-
-.badge-gold {
-  @apply bg-gold-50 text-gold-800 border border-gold-200;
+.gold-text {
+  @apply text-gold-600 font-semibold;
 }
 
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
-}
-
-.shimmer {
-  background: linear-gradient(90deg, transparent 0%, rgba(234, 179, 8, 0.08) 50%, transparent 100%);
-  background-size: 200% 100%;
-  animation: shimmer 3s ease-in-out infinite;
 }

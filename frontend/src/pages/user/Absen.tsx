@@ -1,23 +1,41 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, MapPin, Clock, AlertTriangle, Snowflake } from 'lucide-react';
+import { Spinner } from '@/components/ui/Spinner';
+import { MapPin, Clock, AlertTriangle, Snowflake } from 'lucide-react';
 import { toast } from 'sonner';
 import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/lib/supabase';
+import { PageLayout } from '@/components/layout/PageLayout';
 
-const MapContainerEl = MapContainer as any;
-const CircleEl = Circle as any;
+const MapContainerEl = MapContainer as unknown as React.FC<{
+  center: [number, number];
+  zoom: number;
+  scrollWheelZoom: boolean;
+  className?: string;
+  children?: React.ReactNode;
+}>;
 
-// Fix leaflet icon issue in react
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+const CircleEl = Circle as unknown as React.FC<{
+  center: [number, number];
+  radius: number;
+  pathOptions?: Record<string, any>;
+}>;
+
+import iconRetina from 'leaflet/dist/images/marker-icon-2x.png';
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+
+// Fix for default marker icon in react-leaflet
+delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
+
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconRetinaUrl: iconRetina,
+  iconUrl: icon,
+  shadowUrl: iconShadow,
 });
 
 export default function Absen() {
@@ -35,19 +53,18 @@ export default function Absen() {
   // Validation
   const [distance, setDistance] = useState<number | null>(null);
   const [frozenUntil, setFrozenUntil] = useState<Date | null>(null);
+  const [serverDate, setServerDate] = useState<string>('');
 
   useEffect(() => {
-    if (!user) {
-      navigate('/');
-      return;
-    }
-
     const loadData = async () => {
       try {
-        const deviceId = localStorage.getItem('device_id') || '';
-        const { data: userDataArr, error: userErr } = await supabase.rpc('login_user', { 
-          p_name: user.name,
-          p_device_id: deviceId
+        const { data: serverDateArr } = await supabase.rpc('get_server_date');
+        if (serverDateArr && serverDateArr.length > 0) {
+          setServerDate(serverDateArr[0].today);
+        }
+
+        const { data: userDataArr, error: userErr } = await supabase.rpc('get_user_status', { 
+          p_user_id: user.id
         });
 
         if (userErr) throw userErr;
@@ -127,7 +144,7 @@ export default function Absen() {
     setIsLoading(true);
     
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = serverDate || new Date().toISOString().split('T')[0];
       
       const { error } = await supabase.rpc('record_attendance', {
         p_user_id: user.id,
@@ -150,7 +167,7 @@ export default function Absen() {
       
       toast.success('Berhasil Absen Masuk!');
       navigate('/dashboard');
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error('Terjadi kesalahan koneksi.');
     } finally {
       setIsLoading(false);
@@ -160,10 +177,7 @@ export default function Absen() {
   if (isDataLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-gold-400 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-          <p className="text-neutral-400 text-sm">Memuat data...</p>
-        </div>
+        <Spinner label="Memuat data..." />
       </div>
     );
   }
@@ -171,7 +185,7 @@ export default function Absen() {
   if (isFrozen) {
     return (
       <div className="page-body items-center justify-center p-4">
-        <div className="card-elegant w-full max-w-md p-8 text-center">
+        <div className="card-attendance w-full max-w-md p-8 text-center">
           <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
             <Snowflake className="w-8 h-8 text-red-400" />
           </div>
@@ -179,7 +193,7 @@ export default function Absen() {
           <p className="text-neutral-500 text-sm mb-1">Akses absensi Anda dibekukan hingga:</p>
           <p className="text-red-500 font-bold text-lg mb-4">{frozenUntil?.toLocaleString()}</p>
           <p className="text-xs text-neutral-400 mb-6">Hubungi Admin jika ini adalah kesalahan.</p>
-          <Button className="w-full btn-gold-outline rounded-xl" variant="outline" onClick={() => navigate('/dashboard')}>
+          <Button variant="gold-outline" className="w-full rounded-lg" onClick={() => navigate('/dashboard')}>
             Kembali ke Dashboard
           </Button>
         </div>
@@ -188,25 +202,16 @@ export default function Absen() {
   }
 
   return (
-    <div className="page-body pb-12">
-      <header className="page-header p-4">
-        <div className="max-w-3xl mx-auto flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="shrink-0 rounded-full hover:bg-gold-50">
-            <ArrowLeft className="w-5 h-5 text-neutral-500" />
-          </Button>
-          <h1 className="font-bold text-lg text-neutral-800">Absensi Harian</h1>
-        </div>
-      </header>
-
-      <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-6 space-y-6">
-        <div className="card-elegant overflow-hidden">
-          <div className="bg-gradient-to-r from-gold-50 to-white px-6 py-4 border-b border-gold-100 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-gold-700">
+    <PageLayout title="Absensi Harian">
+      <div className="max-w-3xl w-full mx-auto space-y-6">
+        <div className="card-attendance overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-neutral-100 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-neutral-500">
               <Clock className="w-4 h-4" />
               <span className="font-medium text-xs uppercase tracking-wider">Waktu Server</span>
             </div>
-            <div className="text-xl font-bold text-neutral-800 tracking-tight">
-              {new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} <span className="text-xs font-medium text-gold-600">WIB</span>
+            <div className="text-lg font-bold text-neutral-800 tabular-nums tracking-tight">
+              {new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} <span className="text-xs font-medium text-gold-500">WIB</span>
             </div>
           </div>
           <div className="p-6">
@@ -230,14 +235,11 @@ export default function Absen() {
                 </MapContainerEl>
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-400">
-                  {error ? (
-                    <p className="text-red-400 text-sm text-center px-4">{error} (Sedang mencoba ulang...)</p>
-                  ) : (
-                    <>
-                      <div className="w-8 h-8 border-2 border-gold-400 border-t-transparent rounded-full animate-spin mb-3"></div>
-                      <p className="text-xs font-medium">Mencari lokasi GPS...</p>
-                    </>
-                  )}
+                    {error ? (
+                      <p className="text-red-400 text-sm text-center px-4">{error} (Sedang mencoba ulang...)</p>
+                    ) : (
+                      <Spinner label="Mencari lokasi GPS..." />
+                    )}
                 </div>
               )}
             </div>
@@ -274,19 +276,16 @@ export default function Absen() {
           </div>
         </div>
 
-        <Button 
-          size="lg" 
-          className={`w-full h-14 text-base font-bold rounded-xl shadow-xl transition-all active:scale-[0.98] ${
-            isOutOfRange || !position || !geofenceCenter
-            ? 'bg-neutral-200 text-neutral-400 cursor-not-allowed shadow-none'
-            : 'btn-gold'
-          }`}
+        <Button
+          size="lg"
+          variant="gold"
+          className="w-full h-14 text-base font-bold rounded-xl shadow-lg"
           onClick={handleCheckIn}
           disabled={!position || isLoading || isOutOfRange || !geofenceCenter}
         >
           {isLoading ? 'Memproses...' : 'Absen Masuk Sekarang'}
         </Button>
-      </main>
-    </div>
+      </div>
+    </PageLayout>
   );
 }

@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Spinner } from '@/components/ui/Spinner';
+import { Pagination } from '@/components/ui/Pagination';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Users, Snowflake, Search } from 'lucide-react';
+import { Users, Snowflake, Search, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
+import { PageLayout } from '@/components/layout/PageLayout';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 interface Member {
   id: string;
@@ -19,21 +21,31 @@ interface Member {
 }
 
 export default function KelolaAnggota() {
-  const navigate = useNavigate();
   const { user } = useAuthStore();
   const [members, setMembers] = useState<Member[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+  
+  // States for Add Member
+  const [addModal, setAddModal] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newDivisi, setNewDivisi] = useState('');
+  const [newRole, setNewRole] = useState('anggota');
+  const [newPassword, setNewPassword] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
+
+  // States for Reset Password
+  const [resetModal, setResetModal] = useState<Member | null>(null);
+  const [resetPasswordText, setResetPasswordText] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
   
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [freezeDays, setFreezeDays] = useState(1);
   const [isFreezing, setIsFreezing] = useState(false);
 
   useEffect(() => {
-    if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) {
-      navigate('/dashboard');
-      return;
-    }
     fetchMembers();
   }, [user]);
 
@@ -44,8 +56,12 @@ export default function KelolaAnggota() {
       const { data, error } = await supabase.rpc('get_members', { p_admin_id: user.id });
       if (error) throw error;
       if (data) setMembers(data);
-    } catch (err: any) {
-      toast.error(`Gagal memuat data: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal memuat data: ${err.message}`);
+      } else {
+        toast.error('Terjadi kesalahan yang tidak diketahui');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -64,8 +80,12 @@ export default function KelolaAnggota() {
       toast.success(`Berhasil membekukan ${selectedMember.name}`);
       setSelectedMember(null);
       fetchMembers();
-    } catch (err: any) {
-      toast.error(`Gagal: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal: ${err.message}`);
+      } else {
+        toast.error('Gagal membekukan anggota');
+      }
     } finally {
       setIsFreezing(false);
     }
@@ -81,8 +101,12 @@ export default function KelolaAnggota() {
       if (error) throw error;
       toast.success(`Pembekuan dicabut untuk ${name}`);
       fetchMembers();
-    } catch (err: any) {
-      toast.error(`Gagal: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal: ${err.message}`);
+      } else {
+        toast.error('Gagal mencabut pembekuan');
+      }
     }
   };
 
@@ -96,28 +120,120 @@ export default function KelolaAnggota() {
       if (error) throw error;
       toast.success(`Perangkat baru disetujui untuk ${name}`);
       fetchMembers();
-    } catch (err: any) {
-      toast.error(`Gagal: ${err.message}`);
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal: ${err.message}`);
+      } else {
+        toast.error('Gagal menyetujui perangkat');
+      }
+    }
+  };
+
+  const handleRejectDevice = async (id: string, name: string) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase.rpc('reject_device_request', {
+        p_admin_id: user.id,
+        p_target_id: id
+      });
+      if (error) throw error;
+      toast.success(`Permintaan ganti HP ditolak untuk ${name}`);
+      fetchMembers();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal: ${err.message}`);
+      } else {
+        toast.error('Gagal menolak permintaan');
+      }
+    }
+  };
+
+  const handleAdd = () => {
+    setAddModal(true);
+  };
+
+  const executeAddMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setIsAdding(true);
+    try {
+      const { error } = await supabase.rpc('create_member', {
+        p_admin_id: user.id,
+        p_name: newName,
+        p_divisi: newDivisi,
+        p_password: newPassword,
+        p_role: newRole
+      });
+      if (error) throw error;
+      toast.success('Anggota berhasil ditambahkan!');
+      setAddModal(false);
+      setNewName('');
+      setNewDivisi('');
+      setNewRole('anggota');
+      setNewPassword('');
+      fetchMembers();
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal: ${err.message}`);
+      } else {
+        toast.error('Gagal menambah anggota');
+      }
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const executeResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !resetModal) return;
+    setIsResetting(true);
+    try {
+      const { error } = await supabase.rpc('reset_password', {
+        p_admin_id: user.id,
+        p_target_id: resetModal.id,
+        p_new_password: resetPasswordText
+      });
+      if (error) throw error;
+      toast.success(`Password untuk ${resetModal.name} berhasil di-reset!`);
+      setResetModal(null);
+      setResetPasswordText('');
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        toast.error(`Gagal: ${err.message}`);
+      } else {
+        toast.error('Gagal reset password');
+      }
+    } finally {
+      setIsResetting(false);
     }
   };
 
   const filteredMembers = members.filter(m => m.name.toLowerCase().includes(search.toLowerCase()));
+  
+  // Pagination logic
+  const totalPages = Math.ceil(filteredMembers.length / itemsPerPage);
+  const paginatedMembers = filteredMembers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
 
   return (
-    <div className="page-body pb-12">
-      <header className="page-header p-4">
-        <div className="max-w-5xl mx-auto flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')} className="shrink-0 rounded-full hover:bg-gold-50">
-            <ArrowLeft className="w-5 h-5 text-neutral-500" />
-          </Button>
-          <h1 className="font-bold text-lg text-neutral-800">Kelola Anggota</h1>
-        </div>
-      </header>
-
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 py-6 space-y-5">
+    <PageLayout 
+      title="Kelola Anggota"
+      actions={
+        <Button variant="gold" onClick={handleAdd} className="text-xs sm:text-sm h-9 px-3 sm:px-4 rounded-lg">
+          <Plus className="w-4 h-4 mr-1.5" />
+          <span className="hidden sm:inline">Tambah Anggota</span>
+          <span className="sm:hidden">Tambah</span>
+        </Button>
+      }
+    >
+      <div className="flex-1 w-full mx-auto space-y-5">
         
         {selectedMember && (
-          <div className="card-elegant border-red-200 bg-red-50/30 p-6 animate-in fade-in slide-in-from-top-4">
+          <div className="card-attendance border-red-200 bg-red-50/30 p-5">
             <div className="flex items-center gap-2 mb-4">
               <Snowflake className="w-5 h-5 text-red-400" />
               <h3 className="font-bold text-red-700 text-sm">Bekukan Absensi</h3>
@@ -132,34 +248,34 @@ export default function KelolaAnggota() {
                   type="number" min="1" max="365" 
                   value={freezeDays} 
                   onChange={(e) => setFreezeDays(Number(e.target.value))} 
-                  className="bg-white border-red-200 rounded-xl"
+                  className="bg-white border-red-200 rounded-lg"
                 />
               </div>
             </div>
             <div className="flex gap-3">
-              <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-100 rounded-xl" onClick={() => setSelectedMember(null)}>Batal</Button>
-              <Button className="bg-red-500 hover:bg-red-600 text-white rounded-xl" onClick={handleFreeze} disabled={isFreezing}>
+              <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-100 rounded-lg" onClick={() => setSelectedMember(null)}>Batal</Button>
+              <Button className="bg-red-500 hover:bg-red-600 text-white rounded-lg" onClick={handleFreeze} disabled={isFreezing}>
                 {isFreezing ? 'Memproses...' : 'Terapkan'}
               </Button>
             </div>
           </div>
         )}
 
-        <div className="card-elegant overflow-hidden">
-          <div className="px-6 py-4 border-b border-neutral-100 bg-gradient-to-r from-white to-gold-50/30">
+        <div className="card-attendance overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-neutral-100">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
-                <h3 className="text-sm font-bold text-neutral-700 uppercase tracking-wider flex items-center gap-2">
-                  <Users className="w-4 h-4 text-gold-500" />
+                <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider flex items-center gap-2">
+                  <Users className="w-4 h-4" />
                   Daftar Anggota
                 </h3>
-                <p className="text-xs text-neutral-400 mt-1">Kelola status absensi seluruh panitia.</p>
+                <p className="text-xs text-neutral-400 mt-0.5">Kelola status absensi seluruh panitia.</p>
               </div>
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-300" />
                 <Input 
                   placeholder="Cari nama..." 
-                  className="pl-9 w-full md:w-56 input-elegant"
+                  className="pl-9 w-full md:w-56"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -168,36 +284,47 @@ export default function KelolaAnggota() {
           </div>
           <div>
             {isLoading ? (
-              <div className="text-center py-12 text-neutral-400">
-                <div className="w-6 h-6 border-2 border-gold-300 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                Memuat data...
+              <div className="text-center py-12">
+                <Spinner label="Memuat data..." />
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="table-header-gold">
-                    <tr>
-                      <th className="px-5 py-3">Nama</th>
-                      <th className="px-5 py-3">Divisi</th>
-                      <th className="px-5 py-3">Status</th>
-                      <th className="px-5 py-3 text-right">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-100 bg-white">
-                    {filteredMembers.map((m) => {
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[200px]">Nama</TableHead>
+                      <TableHead>Divisi</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedMembers.map((m) => {
                       const isFrozen = m.frozen_until && new Date(m.frozen_until) > new Date();
                       return (
-                        <tr key={m.id} className="hover:bg-gold-50/20 transition-colors">
-                          <td className="px-5 py-3.5 font-medium text-neutral-800">
+                        <TableRow key={m.id} className="hover:bg-neutral-50 transition-colors">
+                          <TableCell className="font-medium text-neutral-800">
                             {m.name}
                             {m.pending_device_id && (
                               <div className="text-[10px] bg-gold-100 text-gold-700 px-2 py-0.5 mt-1 rounded-full inline-block font-semibold">
                                 Minta Ganti HP
                               </div>
                             )}
-                          </td>
-                          <td className="px-5 py-3.5 text-neutral-500">{m.divisi}</td>
-                          <td className="px-5 py-3.5">
+                          </TableCell>
+                          <TableCell className="text-neutral-500">{m.divisi}</TableCell>
+                          <TableCell>
+                            {m.role === 'admin' ? (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-gold-50 text-gold-600 border border-gold-200">
+                                Admin
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-600 border border-blue-200">
+                                Anggota
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell>
                             {isFrozen ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-red-50 text-red-600 border border-red-200">
                                 <Snowflake className="w-3 h-3" /> Dibekukan
@@ -207,13 +334,18 @@ export default function KelolaAnggota() {
                                 Aktif
                               </span>
                             )}
-                          </td>
-                          <td className="px-5 py-3.5 text-right">
+                          </TableCell>
+                          <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               {m.pending_device_id && (
-                                <Button variant="outline" size="sm" className="badge-gold hover:bg-gold-100 rounded-lg text-xs" onClick={() => handleApproveDevice(m.id, m.name)}>
-                                  Izinkan HP
-                                </Button>
+                                <>
+                                  <Button variant="gold-outline" size="sm" className="rounded-lg text-xs" onClick={() => handleApproveDevice(m.id, m.name)}>
+                                    Izinkan HP
+                                  </Button>
+                                  <Button variant="outline" size="sm" className="text-red-500 border-red-200 hover:bg-red-50 rounded-lg text-xs" onClick={() => handleRejectDevice(m.id, m.name)}>
+                                    Tolak
+                                  </Button>
+                                </>
                               )}
                               {isFrozen ? (
                                 <Button variant="outline" size="sm" className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 rounded-lg text-xs" onClick={() => handleUnfreeze(m.id, m.name)}>
@@ -224,21 +356,96 @@ export default function KelolaAnggota() {
                                   Bekukan
                                 </Button>
                               )}
+                              <Button variant="outline" size="sm" className="text-neutral-600 border-neutral-200 hover:bg-neutral-50 rounded-lg text-xs" onClick={() => setResetModal(m)}>
+                                Reset Password
+                              </Button>
                             </div>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       );
                     })}
-                    {filteredMembers.length === 0 && (
-                      <tr><td colSpan={4} className="px-5 py-12 text-center text-neutral-400">Anggota tidak ditemukan.</td></tr>
+                    {paginatedMembers.length === 0 && (
+                      <TableRow><TableCell colSpan={5} className="text-center py-12 text-neutral-400">Anggota tidak ditemukan.</TableCell></TableRow>
                     )}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+            
+            {!isLoading && totalPages > 1 && (
+              <div className="border-t border-neutral-100">
+                <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
               </div>
             )}
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+
+      {/* Modal Tambah Anggota */}
+      {addModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
+            <div className="px-5 py-3.5 border-b border-neutral-100">
+              <h3 className="font-bold text-neutral-800">Tambah Anggota Baru</h3>
+            </div>
+            <form onSubmit={executeAddMember} className="p-6 space-y-4">
+              <div className="space-y-1.5">
+                <Label>Nama Lengkap</Label>
+                <Input required placeholder="Cth: Budi Santoso" value={newName} onChange={e => setNewName(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Divisi / Jabatan</Label>
+                <Input required placeholder="Cth: Acara" value={newDivisi} onChange={e => setNewDivisi(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Role</Label>
+                <select 
+                  className="flex h-10 w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-neutral-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={newRole}
+                  onChange={e => setNewRole(e.target.value)}
+                >
+                  <option value="anggota">Anggota</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Password</Label>
+                <Input required type="password" placeholder="Minimal 6 karakter" minLength={6} value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <Button type="button" variant="outline" className="flex-1 rounded-lg" onClick={() => setAddModal(false)}>Batal</Button>
+                <Button type="submit" variant="gold" className="flex-1 rounded-lg" disabled={isAdding}>
+                  {isAdding ? 'Menyimpan...' : 'Simpan'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Reset Password */}
+      {resetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95">
+            <div className="px-5 py-3.5 border-b border-neutral-100">
+              <h3 className="font-bold text-neutral-800">Reset Password</h3>
+              <p className="text-xs text-neutral-500 mt-1">Target: <strong>{resetModal.name}</strong></p>
+            </div>
+            <form onSubmit={executeResetPassword} className="p-6 space-y-4">
+              <div className="space-y-1.5">
+                <Label>Password Baru</Label>
+                <Input required type="text" placeholder="Masukkan password baru" minLength={6} value={resetPasswordText} onChange={e => setResetPasswordText(e.target.value)} />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <Button type="button" variant="outline" className="flex-1 rounded-lg" onClick={() => setResetModal(null)}>Batal</Button>
+                <Button type="submit" className="flex-1 bg-neutral-800 hover:bg-neutral-900 text-white rounded-lg" disabled={isResetting}>
+                  {isResetting ? 'Meriset...' : 'Reset'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </PageLayout>
   );
 }
