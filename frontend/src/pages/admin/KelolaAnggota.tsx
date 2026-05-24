@@ -159,8 +159,8 @@ export default function KelolaAnggota() {
     try {
       const { error } = await supabase.rpc('create_member', {
         p_admin_id: user.id,
-        p_name: newName,
-        p_divisi: newDivisi,
+        p_name: newName.trim(),
+        p_divisi: newDivisi.trim(),
         p_password: newPassword,
         p_role: newRole
       });

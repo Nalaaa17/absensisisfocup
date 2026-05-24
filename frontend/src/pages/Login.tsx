@@ -43,19 +43,20 @@ export default function Login() {
     setIsLoading(true);
     
     try {
+      const trimmedName = name.trim();
       const { data: pwValid, error: pwErr } = await supabase.rpc('verify_password', {
-        p_name: name,
+        p_name: trimmedName,
         p_password: password
       });
 
       if (pwErr || !pwValid) {
-        toast.error('Password salah!');
+        toast.error('Nama atau Password salah!');
         setIsLoading(false);
         return;
       }
 
       const deviceId = getDeviceId();
-      const { data, error } = await supabase.rpc('login_user', { p_name: name, p_device_id: deviceId });
+      const { data, error } = await supabase.rpc('login_user', { p_name: trimmedName, p_device_id: deviceId });
         
       if (error) {
         if (error.message.includes('DEVICE_LOCKED')) {

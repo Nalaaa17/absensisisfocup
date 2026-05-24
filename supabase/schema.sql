@@ -7,7 +7,7 @@ CREATE TABLE users (
   name TEXT UNIQUE NOT NULL,
   divisi TEXT NOT NULL,
   phone TEXT,
-  role TEXT NOT NULL CHECK (role IN ('superadmin', 'admin', 'anggota')),
+  role TEXT NOT NULL CHECK (role IN ('admin', 'anggota')),
   password_hash TEXT NOT NULL,
   onesignal_player_id TEXT, -- OneSignal Player ID untuk push notif
   is_active BOOLEAN DEFAULT TRUE,
@@ -57,7 +57,7 @@ CREATE TABLE permissions (
   estimated_return TIMESTAMPTZ NOT NULL,
   actual_return TIMESTAMPTZ,
   proof_photo_url TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'disetujui' CHECK (status IN ('menunggu', 'disetujui', 'kembali', 'terlambat_kembali')),
+  status TEXT NOT NULL DEFAULT 'disetujui' CHECK (status IN ('menunggu', 'disetujui', 'kembali', 'terlambat_kembali', 'ditolak')),
   is_late_return BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   returned_at TIMESTAMPTZ,
@@ -70,23 +70,6 @@ CREATE INDEX idx_permissions_date ON permissions(date);
 CREATE INDEX idx_permissions_user ON permissions(user_id);
 CREATE INDEX idx_permissions_status ON permissions(status);
 
-
--- 4. Tabel notifications
-CREATE TABLE notifications (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  type TEXT NOT NULL CHECK (type IN ('izin_baru', 'izin_kembali', 'terlambat_kembali', 'reminder_absen')),
-  recipient_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  sender_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  sender_name TEXT,
-  message TEXT NOT NULL,
-  related_id UUID, -- ID izin atau absen terkait
-  is_read BOOLEAN DEFAULT FALSE,
-  is_pushed BOOLEAN DEFAULT FALSE, -- Track apakah sudah kirim push notif
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX idx_notifications_recipient ON notifications(recipient_id);
-CREATE INDEX idx_notifications_unread ON notifications(recipient_id, is_read) WHERE is_read = FALSE;
 
 
 -- 5. Tabel settings
@@ -115,29 +98,26 @@ CREATE TABLE settings (
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE attendance ENABLE ROW LEVEL SECURITY;
 ALTER TABLE permissions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
 -- Users: anggota hanya lihat data sendiri, admin & superadmin lihat semua
 CREATE POLICY "users_access" ON users
 FOR SELECT USING (
   auth.uid() = id
-  OR EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role IN ('admin', 'superadmin'))
+  OR EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')
 );
 
 -- Attendance: anggota lihat sendiri, admin lihat semua
 CREATE POLICY "attendance_access" ON attendance
 FOR SELECT USING (
   user_id = auth.uid()
-  OR EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role IN ('admin', 'superadmin'))
+  OR EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')
 );
 
 -- Permissions: sama
 CREATE POLICY "permissions_access" ON permissions
 FOR SELECT USING (
   user_id = auth.uid()
-  OR EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role IN ('admin', 'superadmin'))
+  OR EXISTS (SELECT 1 FROM users WHERE id = auth.uid() AND role = 'admin')
 );
 
--- Notifications: hanya recipient yang bisa lihat
-CREATE POLICY "notifications_access" ON notifications
-FOR SELECT USING (recipient_id = auth.uid());
+

@@ -10,15 +10,15 @@ DROP FUNCTION IF EXISTS login_user(TEXT, TEXT);
 
 CREATE OR REPLACE FUNCTION login_user(p_name TEXT, p_device_id TEXT)
 RETURNS TABLE (
-    id UUID, name TEXT, divisi TEXT, role TEXT, password_hash TEXT, is_active BOOLEAN, frozen_until TIMESTAMPTZ, device_id TEXT, pending_device_id TEXT
+    id UUID, name TEXT, divisi TEXT, role TEXT, is_active BOOLEAN, frozen_until TIMESTAMPTZ, device_id TEXT, pending_device_id TEXT
 ) 
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
     v_user RECORD;
 BEGIN
-    SELECT u.id, u.name, u.divisi, u.role, u.password_hash, u.is_active, u.frozen_until, u.device_id, u.pending_device_id
+    SELECT u.id, u.name, u.divisi, u.role, u.is_active, u.frozen_until, u.device_id, u.pending_device_id
     INTO v_user
-    FROM users u WHERE u.name = p_name LIMIT 1;
+    FROM users u WHERE u.name ILIKE p_name LIMIT 1;
 
     IF v_user IS NULL THEN
         RETURN;
@@ -36,7 +36,7 @@ BEGIN
         END IF;
     END IF;
 
-    RETURN QUERY SELECT v_user.id, v_user.name, v_user.divisi, v_user.role, v_user.password_hash, v_user.is_active, v_user.frozen_until, v_user.device_id, v_user.pending_device_id;
+    RETURN QUERY SELECT v_user.id, v_user.name, v_user.divisi, v_user.role, v_user.is_active, v_user.frozen_until, v_user.device_id, v_user.pending_device_id;
 END;
 $$;
 
@@ -61,7 +61,7 @@ DECLARE
 BEGIN
     -- Cek apakah pemanggil adalah admin
     SELECT role INTO v_role FROM users WHERE id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN
+    IF v_role != 'admin' THEN
         RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
     END IF;
 
@@ -87,14 +87,14 @@ DECLARE
 BEGIN
     -- Cek Admin
     SELECT role INTO v_role FROM users WHERE id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN
+    IF v_role != 'admin' THEN
         RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
     END IF;
 
     -- Hitung Hadir
-    SELECT COUNT(*) INTO v_hadir FROM attendance WHERE date = p_date AND status = 'hadir';
+    SELECT COUNT(*) INTO v_hadir FROM attendance WHERE date = p_date AND status IN ('hadir', 'terlambat');
     -- Hitung Izin
-    SELECT COUNT(*) INTO v_izin FROM permissions WHERE date = p_date AND status IN ('menunggu', 'disetujui');
+    SELECT COUNT(*) INTO v_izin FROM permissions WHERE date = p_date AND status IN ('menunggu', 'disetujui', 'kembali', 'terlambat_kembali');
 
     RETURN json_build_object('hadir', COALESCE(v_hadir, 0), 'izin', COALESCE(v_izin, 0));
 END;
@@ -112,7 +112,7 @@ DECLARE
     v_role TEXT;
 BEGIN
     SELECT u.role INTO v_role FROM users u WHERE u.id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN
+    IF v_role != 'admin' THEN
         RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
     END IF;
 
@@ -120,7 +120,6 @@ BEGIN
     SELECT u.id, u.name, u.divisi, u.role, u.frozen_until, u.shift_id, s.name as shift_name, u.device_id, u.pending_device_id
     FROM users u 
     LEFT JOIN shifts s ON u.shift_id = s.id
-    WHERE u.role = 'anggota' 
     ORDER BY u.created_at DESC;
 END;
 $$;
@@ -134,7 +133,7 @@ DECLARE
 BEGIN
     -- Cek Admin
     SELECT role INTO v_role FROM users WHERE id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN
+    IF v_role != 'admin' THEN
         RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
     END IF;
 
@@ -151,7 +150,7 @@ DECLARE
 BEGIN
     -- Cek Admin
     SELECT role INTO v_role FROM users WHERE id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN
+    IF v_role != 'admin' THEN
         RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
     END IF;
 
@@ -168,7 +167,28 @@ DECLARE
     v_shift_id UUID;
     v_end_time TIME;
     v_status TEXT;
+    v_geo_lat DECIMAL;
+    v_geo_lng DECIMAL;
+    v_geo_radius INT;
+    v_distance FLOAT;
 BEGIN
+    -- Validasi Geofence Server-side
+    SELECT geofence_lat, geofence_lng, geofence_radius INTO v_geo_lat, v_geo_lng, v_geo_radius 
+    FROM settings LIMIT 1;
+
+    IF v_geo_lat IS NOT NULL AND v_geo_lng IS NOT NULL AND v_geo_radius IS NOT NULL THEN
+        -- Formula Haversine
+        v_distance := 6371000 * 2 * ASIN(SQRT(
+            POWER(SIN((v_geo_lat - p_lat) * PI() / 180 / 2), 2) +
+            COS(v_geo_lat * PI() / 180) * COS(p_lat * PI() / 180) *
+            POWER(SIN((v_geo_lng - p_lng) * PI() / 180 / 2), 2)
+        ));
+
+        IF v_distance > v_geo_radius THEN
+            RAISE EXCEPTION 'Di luar radius geofence (Jarak: %m, Maks: %m)', ROUND(v_distance::NUMERIC, 0), v_geo_radius;
+        END IF;
+    END IF;
+
     -- Cek apakah dibekukan dan ambil shift_id
     SELECT frozen_until, shift_id INTO v_frozen, v_shift_id FROM users WHERE id = p_user_id;
     IF v_frozen IS NOT NULL AND v_frozen > NOW() THEN
@@ -200,7 +220,7 @@ DECLARE
     v_role TEXT;
 BEGIN
     SELECT role INTO v_role FROM users u WHERE u.id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN
+    IF v_role != 'admin' THEN
         RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
     END IF;
 
@@ -226,7 +246,7 @@ DECLARE
     v_role TEXT;
 BEGIN
     SELECT u.role INTO v_role FROM users u WHERE u.id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN
+    IF v_role != 'admin' THEN
         RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
     END IF;
 
@@ -248,7 +268,7 @@ DECLARE
     v_role TEXT;
 BEGIN
     SELECT role INTO v_role FROM users WHERE id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN
+    IF v_role != 'admin' THEN
         RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
     END IF;
 
@@ -285,7 +305,7 @@ DECLARE
     v_role TEXT;
 BEGIN
     SELECT u.role INTO v_role FROM users u WHERE u.id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN
+    IF v_role != 'admin' THEN
         RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
     END IF;
 
@@ -308,7 +328,7 @@ DECLARE
     v_role TEXT;
 BEGIN
     SELECT u.role INTO v_role FROM users u WHERE u.id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN
+    IF v_role != 'admin' THEN
         RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
     END IF;
 
@@ -366,7 +386,7 @@ RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE v_role TEXT;
 BEGIN
     SELECT role INTO v_role FROM users WHERE id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN RAISE EXCEPTION 'Akses Ditolak'; END IF;
+    IF v_role != 'admin' THEN RAISE EXCEPTION 'Akses Ditolak'; END IF;
     DELETE FROM permissions WHERE id = p_permission_id;
 END;
 $$;
@@ -377,7 +397,7 @@ RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE v_role TEXT;
 BEGIN
     SELECT role INTO v_role FROM users WHERE id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN RAISE EXCEPTION 'Akses Ditolak'; END IF;
+    IF v_role != 'admin' THEN RAISE EXCEPTION 'Akses Ditolak'; END IF;
     INSERT INTO shifts (name, start_time, end_time) VALUES (p_name, p_start_time, p_end_time);
 END;
 $$;
@@ -387,7 +407,7 @@ RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE v_role TEXT;
 BEGIN
     SELECT role INTO v_role FROM users WHERE id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN RAISE EXCEPTION 'Akses Ditolak'; END IF;
+    IF v_role != 'admin' THEN RAISE EXCEPTION 'Akses Ditolak'; END IF;
     DELETE FROM shifts WHERE id = p_shift_id;
 END;
 $$;
@@ -398,7 +418,7 @@ LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE v_role TEXT;
 BEGIN
     SELECT role INTO v_role FROM users u WHERE u.id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN RAISE EXCEPTION 'Akses Ditolak'; END IF;
+    IF v_role != 'admin' THEN RAISE EXCEPTION 'Akses Ditolak'; END IF;
     RETURN QUERY SELECT s.id, s.name, s.start_time, s.end_time, s.created_at FROM shifts s ORDER BY s.created_at DESC;
 END;
 $$;
@@ -408,7 +428,7 @@ RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE v_role TEXT;
 BEGIN
     SELECT role INTO v_role FROM users WHERE id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN RAISE EXCEPTION 'Akses Ditolak'; END IF;
+    IF v_role != 'admin' THEN RAISE EXCEPTION 'Akses Ditolak'; END IF;
     UPDATE users SET shift_id = p_shift_id WHERE id = p_target_user_id;
 END;
 $$;
@@ -485,7 +505,7 @@ LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE v_role TEXT;
 BEGIN
     SELECT role INTO v_role FROM users WHERE id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN RAISE EXCEPTION 'Akses Ditolak'; END IF;
+    IF v_role != 'admin' THEN RAISE EXCEPTION 'Akses Ditolak'; END IF;
 
     RETURN QUERY
     WITH shift_list AS (
@@ -496,7 +516,6 @@ BEGIN
     member_counts AS (
         SELECT u.shift_id as sid, COUNT(*) as cnt
         FROM users u
-        WHERE u.role = 'anggota'
         GROUP BY u.shift_id
     ),
     hadir_counts AS (
@@ -520,9 +539,9 @@ BEGIN
         COALESCE(hc.cnt, 0) as total_hadir,
         COALESCE(ic.cnt, 0) as total_izin
     FROM shift_list sl
-    LEFT JOIN member_counts mc ON sl.id IS NOT DISTINCT FROM mc.sid
-    LEFT JOIN hadir_counts hc ON sl.id IS NOT DISTINCT FROM hc.sid
-    LEFT JOIN izin_counts ic ON sl.id IS NOT DISTINCT FROM ic.sid
+    LEFT JOIN member_counts mc ON (sl.id = mc.sid OR (sl.id IS NULL AND mc.sid IS NULL))
+    LEFT JOIN hadir_counts hc ON (sl.id = hc.sid OR (sl.id IS NULL AND hc.sid IS NULL))
+    LEFT JOIN izin_counts ic ON (sl.id = ic.sid OR (sl.id IS NULL AND ic.sid IS NULL))
     ORDER BY sl.name;
 END;
 $$;
@@ -535,12 +554,148 @@ DECLARE
     v_role TEXT;
 BEGIN
     SELECT role INTO v_role FROM users WHERE id = p_admin_id;
-    IF v_role NOT IN ('admin', 'superadmin') THEN
+    IF v_role != 'admin' THEN
         RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
     END IF;
 
     UPDATE users 
     SET device_id = pending_device_id, pending_device_id = NULL 
     WHERE id = p_target_id AND pending_device_id IS NOT NULL;
+END;
+$$;
+
+-- 22. Fungsi Logout (Hapus device_id)
+CREATE OR REPLACE FUNCTION logout_user(p_name TEXT, p_device_id TEXT)
+RETURNS VOID
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    UPDATE users 
+    SET device_id = NULL, pending_device_id = NULL 
+    WHERE name ILIKE p_name AND device_id = p_device_id;
+END;
+$$;
+
+-- 23. Fungsi Verifikasi Password (dengan pgcrypto & auto-migration)
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE OR REPLACE FUNCTION verify_password(p_name TEXT, p_password TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_hash TEXT;
+BEGIN
+    SELECT password_hash INTO v_hash FROM users WHERE name ILIKE p_name;
+    
+    IF v_hash IS NULL THEN
+        RETURN FALSE;
+    END IF;
+
+    -- Auto-migration: Jika password masih plain text
+    IF v_hash = p_password THEN
+        UPDATE users SET password_hash = crypt(p_password, gen_salt('bf')) WHERE name ILIKE p_name;
+        RETURN TRUE;
+    -- Verifikasi hash
+    ELSIF v_hash = crypt(p_password, v_hash) THEN
+        RETURN TRUE;
+    END IF;
+
+    RETURN FALSE;
+END;
+$$;
+
+-- 24. Fungsi Buat Anggota Baru (Admin)
+CREATE OR REPLACE FUNCTION create_member(p_admin_id UUID, p_name TEXT, p_divisi TEXT, p_password TEXT, p_role TEXT DEFAULT 'anggota')
+RETURNS VOID
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_admin_role TEXT;
+BEGIN
+    SELECT role INTO v_admin_role FROM users WHERE id = p_admin_id;
+    IF v_admin_role != 'admin' THEN
+        RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
+    END IF;
+
+    
+
+    INSERT INTO users (name, divisi, role, password_hash)
+    VALUES (p_name, p_divisi, p_role, crypt(p_password, gen_salt('bf')));
+END;
+$$;
+
+-- 25. Fungsi Reset Password Anggota (Admin)
+CREATE OR REPLACE FUNCTION reset_password(p_admin_id UUID, p_target_id UUID, p_new_password TEXT)
+RETURNS VOID
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_role TEXT;
+BEGIN
+    SELECT role INTO v_role FROM users WHERE id = p_admin_id;
+    IF v_role != 'admin' THEN
+        RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
+    END IF;
+
+    UPDATE users SET password_hash = crypt(p_new_password, gen_salt('bf'))
+    WHERE id = p_target_id;
+END;
+$$;
+
+-- Fungsi khusus ambil status user, TANPA device lock logic
+CREATE OR REPLACE FUNCTION get_user_status(p_user_id UUID)
+RETURNS TABLE (frozen_until TIMESTAMPTZ)
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    RETURN QUERY SELECT u.frozen_until FROM users u WHERE u.id = p_user_id;
+END;
+$$;
+
+-- Fungsi untuk mendapatkan tanggal server
+CREATE OR REPLACE FUNCTION get_server_date()
+RETURNS TABLE(today DATE)
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    RETURN QUERY SELECT CURRENT_DATE;
+END;
+$$;
+
+-- 26. Fungsi Tolak Perangkat Baru (Admin)
+CREATE OR REPLACE FUNCTION reject_device_request(p_admin_id UUID, p_target_id UUID)
+RETURNS VOID 
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_role TEXT;
+BEGIN
+    SELECT role INTO v_role FROM users WHERE id = p_admin_id;
+    IF v_role != 'admin' THEN
+        RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
+    END IF;
+
+    UPDATE users 
+    SET pending_device_id = NULL 
+    WHERE id = p_target_id AND pending_device_id IS NOT NULL;
+END;
+$$;
+
+-- 27. Fungsi Ambil Anggota per Shift
+CREATE OR REPLACE FUNCTION get_users_by_shift(p_shift_id UUID)
+RETURNS TABLE (id UUID, name TEXT, divisi TEXT)
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    RETURN QUERY 
+    SELECT u.id, u.name, u.divisi 
+    FROM users u 
+    WHERE u.shift_id = p_shift_id
+    ORDER BY u.name;
+END;
+$$;
+
+-- 28. Fungsi Ambil Semua Shift
+CREATE OR REPLACE FUNCTION get_all_shifts()
+RETURNS TABLE (id UUID, name TEXT)
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    RETURN QUERY 
+    SELECT s.id, s.name 
+    FROM shifts s 
+    ORDER BY s.name;
 END;
 $$;
