@@ -7,6 +7,7 @@ import { Camera, Upload, Image as ImageIcon, Send } from 'lucide-react';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { compressImage } from '@/lib/compressImage';
 import { useAuthStore } from '@/stores/authStore';
 
 export default function FormIzin() {
@@ -51,7 +52,7 @@ export default function FormIzin() {
     setIsCameraActive(false);
   }, [stream]);
 
-  const capturePhoto = () => {
+  const capturePhoto = async () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -61,21 +62,22 @@ export default function FormIzin() {
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        setPhotoUrl(dataUrl);
+        const compressed = await compressImage(dataUrl);
+        setPhotoUrl(compressed);
         stopCamera();
       }
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setPhotoUrl(event.target?.result as string);
-      };
-      reader.onerror = () => toast.error('Gagal membaca file foto');
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImage(file);
+        setPhotoUrl(compressed);
+      } catch {
+        toast.error('Gagal membaca file foto');
+      }
     }
   };
 

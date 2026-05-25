@@ -50,7 +50,7 @@ function LocationMarker({ position, setPosition, radius }: LocationMarkerProps) 
   return position === null ? null : (
     <>
       <Marker position={position}></Marker>
-      <CircleEl center={position} radius={radius} pathOptions={{ color: '#ca8a04', fillColor: '#facc15', fillOpacity: 0.15 }} />
+      <CircleEl center={position} radius={radius} pathOptions={{ color: '#7A1C1C', fillColor: '#e97878', fillOpacity: 0.15 }} />
     </>
   );
 }

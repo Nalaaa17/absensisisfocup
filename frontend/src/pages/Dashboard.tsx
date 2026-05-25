@@ -2,7 +2,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Calendar, FileText, Settings, ShieldAlert, Clock, CheckCircle2, Clock3, MapPin, Loader2, Users } from 'lucide-react';
+import { Calendar, FileText, Settings, ShieldAlert, Clock, CheckCircle2, Clock3, MapPin, Loader2, Users, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/lib/supabase';
@@ -427,6 +427,10 @@ export default function Dashboard() {
                       <FileText className="w-4 h-4 mr-2" />
                       Ajukan Izin
                     </Button>
+                    <Button variant="outline" className="w-full justify-start text-left h-9 rounded-lg text-sm" onClick={() => navigate('/ubah-password')}>
+                      <Lock className="w-4 h-4 mr-2" />
+                      Ganti Password
+                    </Button>
                   </div>
                   <div className="space-y-2">
                     <h4 className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">Menu Admin</h4>
@@ -491,6 +495,9 @@ export default function Dashboard() {
                 </Button>
                 <Button variant="gold-outline" className="w-full justify-start text-left h-10 rounded-lg text-sm" onClick={() => navigate('/izin')}>
                   <FileText className="w-4 h-4 mr-2" /> Ajukan Izin
+                </Button>
+                <Button variant="outline" className="w-full justify-start text-left h-10 rounded-lg text-sm" onClick={() => navigate('/ubah-password')}>
+                  <Lock className="w-4 h-4 mr-2" /> Ganti Password
                 </Button>
               </div>
             </div>

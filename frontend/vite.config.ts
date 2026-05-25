@@ -54,17 +54,17 @@ export default defineConfig({
         name: 'ABSENSI SISFO CUP',
         short_name: 'SISFO CUP',
         description: 'Aplikasi Absensi dan Perizinan Kepanitiaan',
-        theme_color: '#ca8a04',
+        theme_color: '#7A1C1C',
         background_color: '#ffffff',
         display: 'standalone',
         icons: [
           {
-            src: 'pwa-192x192.png',
+            src: 'logo.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'logo.png',
             sizes: '512x512',
             type: 'image/png'
           }

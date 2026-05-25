@@ -6,6 +6,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Absen from './pages/user/Absen';
 import FormIzin from './pages/user/FormIzin';
+import UbahPassword from './pages/user/UbahPassword';
 import DaftarIzin from './pages/admin/DaftarIzin';
 import RekapAbsensi from './pages/admin/RekapAbsensi';
 import AdminSettings from './pages/admin/AdminSettings';
@@ -15,8 +16,6 @@ import { useAuthStore } from '@/stores/authStore';
 
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { InstallPrompt } from './components/InstallPrompt';
-
-import { Trophy } from 'lucide-react';
 
 // ABSENSI SISFO CUP Main Application Router
 
@@ -29,9 +28,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         <div className="absolute top-[30%] right-[10%] w-32 h-32 border-2 border-gold-200/30 rounded-full animate-pulse"></div>
         <div className="absolute bottom-[20%] left-[15%] w-20 h-20 border border-gold-300/20 rounded-2xl rotate-45 animate-pulse"></div>
         
-        <div className="w-20 h-20 gold-gradient rounded-3xl flex items-center justify-center mx-auto shadow-2xl shadow-gold-300/40 mb-6 animate-bounce">
-          <Trophy className="text-white w-10 h-10" />
-        </div>
+        <img src="/logo.png" alt="SISFO CUP" className="w-20 h-20 mx-auto mb-6 object-contain animate-bounce" />
         <h1 className="text-xl font-bold tracking-tight text-neutral-800 mb-2">
           SISFO <span className="gold-gradient-text">CUP</span>
         </h1>
@@ -68,6 +65,7 @@ function App() {
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/absen" element={<ProtectedRoute><Absen /></ProtectedRoute>} />
           <Route path="/izin" element={<ProtectedRoute><FormIzin /></ProtectedRoute>} />
+          <Route path="/ubah-password" element={<ProtectedRoute><UbahPassword /></ProtectedRoute>} />
           <Route path="/admin/daftar-izin" element={<ProtectedRoute requireAdmin><DaftarIzin /></ProtectedRoute>} />
           <Route path="/admin/rekap-absensi" element={<ProtectedRoute requireAdmin><RekapAbsensi /></ProtectedRoute>} />
           <Route path="/admin/settings" element={<ProtectedRoute requireAdmin><AdminSettings /></ProtectedRoute>} />
@@ -75,7 +73,7 @@ function App() {
           <Route path="/admin/shift" element={<ProtectedRoute requireAdmin><KelolaShift /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-        <Toaster position="top-right" richColors />
+        <Toaster position="top-right" />
         <InstallPrompt />
       </Router>
     </AuthGate>

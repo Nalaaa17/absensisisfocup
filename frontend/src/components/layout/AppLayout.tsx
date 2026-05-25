@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { LogOut, Trophy } from 'lucide-react';
+import { LogOut } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/lib/supabase';
 
@@ -32,9 +32,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 bg-gold-500 rounded-lg flex items-center justify-center shadow-sm">
-                <Trophy className="text-white w-4 h-4" />
-              </div>
+              <img src="/logo.png" alt="SISFO CUP" className="w-10 h-10 object-contain" />
               <span className="font-bold text-lg text-neutral-800">SISFO CUP</span>
             </div>
             <Button variant="ghost" onClick={handleLogout} className="text-neutral-500 hover:text-red-600 hover:bg-red-50 rounded-xl">

@@ -227,7 +227,7 @@ export default function Absen() {
                 <MapContainerEl center={position} zoom={16} scrollWheelZoom={false} className="h-full w-full">
                   <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                   {geofenceCenter && (
-                    <CircleEl center={geofenceCenter} radius={geofenceRadius} pathOptions={{ color: '#ca8a04', fillColor: '#facc15', fillOpacity: 0.15 }} />
+                    <CircleEl center={geofenceCenter} radius={geofenceRadius} pathOptions={{ color: '#7A1C1C', fillColor: '#e97878', fillOpacity: 0.15 }} />
                   )}
                   <Marker position={position}>
                     <Popup>Posisi Anda</Popup>

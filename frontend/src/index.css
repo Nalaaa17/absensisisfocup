@@ -3,14 +3,14 @@
 @import "@fontsource-variable/geist";
 
 @theme {
-  --color-gold-50: #fefce8;
-  --color-gold-100: #fef9c3;
-  --color-gold-200: #fef08a;
-  --color-gold-300: #fde047;
-  --color-gold-400: #facc15;
-  --color-gold-500: #ca8a04;
-  --color-gold-600: #a16207;
-  --color-gold-700: #854d0e;
+  --color-gold-50: #fdf2f2;
+  --color-gold-100: #fce4e4;
+  --color-gold-200: #f8cece;
+  --color-gold-300: #f2a8a8;
+  --color-gold-400: #e97878;
+  --color-gold-500: #7A1C1C;
+  --color-gold-600: #601616;
+  --color-gold-700: #4a1010;
   --font-sans: 'Geist Variable', sans-serif;
 }
 
@@ -35,6 +35,14 @@ body {
 }
 
 .gold-text {
+  @apply text-gold-600 font-semibold;
+}
+
+.gold-gradient {
+  @apply bg-gold-500;
+}
+
+.gold-gradient-text {
   @apply text-gold-600 font-semibold;
 }
 

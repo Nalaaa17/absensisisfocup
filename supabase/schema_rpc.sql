@@ -639,6 +639,33 @@ BEGIN
 END;
 $$;
 
+-- 26. Fungsi Ganti Password Sendiri (Semua User)
+CREATE OR REPLACE FUNCTION change_password(p_user_id UUID, p_old_password TEXT, p_new_password TEXT)
+RETURNS VOID LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_current_hash TEXT;
+BEGIN
+    IF p_new_password IS NULL OR length(p_new_password) < 6 THEN
+        RAISE EXCEPTION 'Password baru minimal 6 karakter';
+    END IF;
+
+    SELECT password_hash INTO v_current_hash FROM users WHERE id = p_user_id;
+
+    IF v_current_hash IS NULL THEN
+        RAISE EXCEPTION 'Pengguna tidak ditemukan';
+    END IF;
+
+    IF v_current_hash != crypt(p_old_password, v_current_hash) THEN
+        RAISE EXCEPTION 'Password lama salah';
+    END IF;
+
+    UPDATE users
+    SET password_hash = crypt(p_new_password, gen_salt('bf')),
+        updated_at = NOW()
+    WHERE id = p_user_id;
+END;
+$$;
+
 -- Fungsi khusus ambil status user, TANPA device lock logic
 CREATE OR REPLACE FUNCTION get_user_status(p_user_id UUID)
 RETURNS TABLE (frozen_until TIMESTAMPTZ)

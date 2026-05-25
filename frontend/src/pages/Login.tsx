@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { LogIn, Trophy } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
@@ -112,9 +112,7 @@ export default function Login() {
     <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center p-4">
       <Card className="w-full max-w-sm shadow-sm border-neutral-200/60 bg-white rounded-xl">
         <CardHeader className="text-center pb-4 pt-8">
-          <div className="w-12 h-12 bg-gold-500 rounded-xl flex items-center justify-center mx-auto shadow-sm mb-4">
-            <Trophy className="text-white w-6 h-6" />
-          </div>
+          <img src="/logo.png" alt="SISFO CUP" className="w-24 h-24 mx-auto mb-4 object-contain" />
           <CardTitle className="text-xl font-bold text-neutral-800">
             SISFO CUP
           </CardTitle>
