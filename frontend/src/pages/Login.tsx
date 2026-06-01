@@ -60,6 +60,24 @@ export default function Login() {
         
       if (error) {
         if (error.message.includes('DEVICE_LOCKED')) {
+          // Fire-and-forget: kirim push notification ke admin via Edge Function
+          try {
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+            if (supabaseUrl && anonKey) {
+              fetch(`${supabaseUrl}/functions/v1/send-device-notification`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${anonKey}`,
+                },
+                body: JSON.stringify({ userName: trimmedName }),
+              }).catch(() => {});
+            }
+          } catch {
+            // silent
+          }
+
           toast.error('Gagal masuk: Anda mencoba masuk dari perangkat baru. Menunggu persetujuan Admin.');
         } else {
           toast.error(`Error: ${error.message}`);

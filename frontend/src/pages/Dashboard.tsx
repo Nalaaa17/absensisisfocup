@@ -2,11 +2,12 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Calendar, FileText, Settings, ShieldAlert, Clock, CheckCircle2, Clock3, MapPin, Loader2, Users, Lock } from 'lucide-react';
+import { Calendar, FileText, Settings, ShieldAlert, Clock, CheckCircle2, Clock3, MapPin, Loader2, Users, Lock, Shuffle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/lib/supabase';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 interface ShiftStat {
   shift_id: string | null;
@@ -46,6 +47,9 @@ export default function Dashboard() {
   const [shiftMembers, setShiftMembers] = useState<{id: string, name: string, divisi: string}[]>([]);
   const [activeShiftId, setActiveShiftId] = useState<string | null>(null);
   const [isLoadingShiftMembers, setIsLoadingShiftMembers] = useState(false);
+  const [swapSource, setSwapSource] = useState<{id: string, name: string, shiftId: string} | null>(null);
+  const [swapTarget, setSwapTarget] = useState<{id: string, name: string} | null>(null);
+  const [isSwapping, setIsSwapping] = useState(false);
   useEffect(() => {
     if (!serverDate) {
       supabase.rpc('get_server_date').then(({ data }) => {
@@ -98,6 +102,44 @@ export default function Dashboard() {
       setShiftMembers([]);
     } finally {
       setIsLoadingShiftMembers(false);
+    }
+  };
+
+  const handleSwapSourceSelect = (member: {id: string, name: string}) => {
+    if (!activeShiftId) return;
+    if (swapSource && swapSource.id === member.id) {
+      setSwapSource(null);
+      return;
+    }
+    setSwapSource({ ...member, shiftId: activeShiftId });
+    const otherShift = shifts.find(s => s.id !== activeShiftId);
+    if (otherShift) fetchShiftMembers(otherShift.id);
+  };
+
+  const handleSwapTargetSelect = (target: {id: string, name: string}) => {
+    if (!swapSource) return;
+    setSwapTarget(target);
+  };
+
+  const executeSwap = async () => {
+    if (!user || !swapSource || !swapTarget) return;
+    setIsSwapping(true);
+    try {
+      const { error } = await supabase.rpc('swap_user_shift', {
+        p_admin_id: user.id,
+        p_user1_id: swapSource.id,
+        p_user2_id: swapTarget.id
+      });
+      if (error) throw error;
+      toast.success(`Berhasil menukar ${swapSource.name} ↔ ${swapTarget.name}`);
+      setSwapSource(null);
+      setSwapTarget(null);
+      if (activeShiftId) fetchShiftMembers(activeShiftId);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err);
+      toast.error(`Gagal: ${msg}`);
+    } finally {
+      setIsSwapping(false);
     }
   };
 
@@ -511,18 +553,40 @@ export default function Dashboard() {
               <Users className="w-4 h-4" />
               Daftar Anggota per Shift
             </h3>
+            {isAdmin && swapSource && (
+              <button
+                onClick={() => setSwapSource(null)}
+                className="text-xs text-red-500 hover:text-red-700 font-medium"
+              >
+                Batal Swap
+              </button>
+            )}
           </div>
           <div className="p-5 space-y-4">
+            {/* Banner mode swap untuk admin */}
+            {isAdmin && swapSource && (
+              <div className="bg-gold-50 border border-gold-200 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-gold-800">
+                <Shuffle className="w-4 h-4 shrink-0" />
+                <span>
+                  Pilih target tukar untuk <strong>{swapSource.name}</strong> ({shifts.find(s => s.id === swapSource.shiftId)?.name})
+                </span>
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2">
               {shifts.map(s => (
                 <Button 
                   key={s.id} 
                   variant={activeShiftId === s.id ? 'gold' : 'outline'} 
                   size="sm" 
-                  className="rounded-full text-xs"
-                  onClick={() => fetchShiftMembers(s.id)}
+                  className={`rounded-full text-xs ${swapSource && s.id !== swapSource.shiftId ? 'ring-2 ring-gold-300' : ''}`}
+                  onClick={() => {
+                    fetchShiftMembers(s.id);
+                    if (swapSource && s.id === swapSource.shiftId) setSwapSource(null);
+                  }}
                 >
                   {s.name}
+                  {swapSource && s.id !== swapSource.shiftId && ' ⇐ Pilih Target'}
                 </Button>
               ))}
               {shifts.length === 0 && (
@@ -540,21 +604,67 @@ export default function Dashboard() {
                   </div>
                 ) : shiftMembers.length > 0 ? (
                   <ul className="space-y-2">
-                    {shiftMembers.map(m => (
-                      <li key={m.id} className="flex items-center gap-2 text-sm text-neutral-600">
-                        <span className="w-1.5 h-1.5 rounded-full bg-gold-400 shrink-0"></span>
-                        <span className="font-medium text-neutral-800">{m.name}</span>
-                        <span className="text-neutral-400">— {m.divisi}</span>
-                      </li>
-                    ))}
+                    {shiftMembers.map(m => {
+                      const isSourceMember = swapSource?.id === m.id;
+                      const isTargetMode = isAdmin && swapSource && activeShiftId !== swapSource.shiftId;
+                      return (
+                        <li key={m.id} className={`flex items-center gap-2 text-sm text-neutral-600 ${isTargetMode ? 'hover:bg-gold-50 rounded-lg px-2 -mx-2 transition-colors' : ''} ${isSourceMember ? 'bg-gold-50 rounded-lg px-2 -mx-2' : ''}`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-gold-400 shrink-0"></span>
+                          <span className="font-medium text-neutral-800 flex-1">
+                            {m.name}
+                            {isSourceMember && (
+                              <span className="ml-2 text-[10px] text-gold-600 font-semibold">(Sumber Swap)</span>
+                            )}
+                          </span>
+                          <span className="text-neutral-400 text-xs">{m.divisi}</span>
+
+                          {/* Tombol swap untuk admin */}
+                          {isAdmin && !swapSource && (
+                            <button
+                              onClick={() => handleSwapSourceSelect(m)}
+                              className="ml-2 p-1 text-neutral-300 hover:text-gold-500 hover:bg-gold-50 rounded transition-colors"
+                              title="Tukar shift"
+                            >
+                              <Shuffle className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {isTargetMode && !isSourceMember && (
+                            <button
+                              onClick={() => handleSwapTargetSelect(m)}
+                              disabled={isSwapping}
+                              className="ml-2 text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-gold-100 text-gold-700 hover:bg-gold-200 transition-colors disabled:opacity-50"
+                            >
+                              {isSwapping ? '...' : 'Pilih'}
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 ) : (
-                  <p className="text-xs text-neutral-400 italic">Tidak ada anggota di shift ini.</p>
+                  <p className="text-xs text-neutral-400 italic">
+                    {swapSource && activeShiftId !== swapSource.shiftId
+                      ? 'Tidak ada anggota di shift ini untuk dijadikan target tukar.'
+                      : 'Tidak ada anggota di shift ini.'}
+                  </p>
                 )}
               </div>
             )}
           </div>
         </div>
+
+        {/* Modal Konfirmasi Swap */}
+        <ConfirmModal
+          isOpen={swapTarget !== null}
+          title="Konfirmasi Tukar Shift"
+          description={
+            swapSource && swapTarget
+              ? `Tukar posisi ${swapSource.name} (${shifts.find(s => s.id === swapSource.shiftId)?.name}) ↔ ${swapTarget.name} (${shifts.find(s => s.id === activeShiftId)?.name ?? 'Tanpa Shift'})?`
+              : ''
+          }
+          onCancel={() => setSwapTarget(null)}
+          onConfirm={executeSwap}
+        />
       </div>
     </AppLayout>
   );

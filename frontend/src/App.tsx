@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import OneSignal from 'react-onesignal';
 import { Toaster } from '@/components/ui/sonner';
+import { toast } from 'sonner';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Absen from './pages/user/Absen';
@@ -13,6 +14,8 @@ import AdminSettings from './pages/admin/AdminSettings';
 import KelolaAnggota from './pages/admin/KelolaAnggota';
 import KelolaShift from './pages/admin/KelolaShift';
 import { useAuthStore } from '@/stores/authStore';
+import { usePendingDevicePolling } from '@/hooks/usePendingDevicePolling';
+import { supabase } from '@/lib/supabase';
 
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { InstallPrompt } from './components/InstallPrompt';
@@ -44,6 +47,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const { user } = useAuthStore();
+
   useEffect(() => {
     if (import.meta.env.VITE_ONESIGNAL_APP_ID) {
       OneSignal.init({
@@ -56,6 +61,42 @@ function App() {
       });
     }
   }, []);
+
+  // Polling: notifikasi toast saat ada pending device request
+  usePendingDevicePolling(
+    user?.role === 'admin' ? user.id : undefined
+  );
+
+  // Realtime: subscription perubahan pending_device_id
+  useEffect(() => {
+    if (!user || user.role !== 'admin') return;
+
+    const subscription = supabase
+      .channel('pending-device-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users',
+          filter: `pending_device_id=neq.${null}`,
+        },
+        (payload) => {
+          const newRecord = payload.new as { name?: string; pending_device_id?: string | null };
+          if (newRecord.pending_device_id) {
+            toast.info(
+              `${newRecord.name ?? 'Seseorang'} meminta ganti HP`,
+              { duration: 5000 }
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, [user]);
 
   return (
     <AuthGate>

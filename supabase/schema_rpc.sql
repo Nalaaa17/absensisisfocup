@@ -726,3 +726,82 @@ BEGIN
     ORDER BY s.name;
 END;
 $$;
+
+-- 29. Fungsi Hitung Jumlah Pending Device Request (Admin)
+CREATE OR REPLACE FUNCTION get_pending_device_count(p_admin_id UUID)
+RETURNS INT
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_role TEXT;
+    v_count INT;
+BEGIN
+    SELECT role INTO v_role FROM users WHERE id = p_admin_id;
+    IF v_role != 'admin' THEN
+        RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
+    END IF;
+
+    SELECT COUNT(*) INTO v_count FROM users 
+    WHERE pending_device_id IS NOT NULL;
+    
+    RETURN v_count;
+END;
+$$;
+
+-- 30. Fungsi Ambil OneSignal Player ID Semua Admin (Untuk Push Notification)
+CREATE OR REPLACE FUNCTION get_admin_player_ids(p_admin_id UUID)
+RETURNS TABLE (player_id TEXT)
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+    IF (SELECT role FROM users WHERE id = p_admin_id) != 'admin' THEN
+        RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
+    END IF;
+    RETURN QUERY SELECT onesignal_player_id FROM users 
+    WHERE role = 'admin' AND onesignal_player_id IS NOT NULL;
+END;
+$$;
+
+-- 31. Fungsi Tukar Shift Antar Dua User (Admin)
+CREATE OR REPLACE FUNCTION swap_user_shift(p_admin_id UUID, p_user1_id UUID, p_user2_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_role TEXT;
+    v_shift1 UUID;
+    v_shift2 UUID;
+BEGIN
+    SELECT role INTO v_role FROM users WHERE id = p_admin_id;
+    IF v_role != 'admin' THEN
+        RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
+    END IF;
+
+    SELECT shift_id INTO v_shift1 FROM users WHERE id = p_user1_id;
+    SELECT shift_id INTO v_shift2 FROM users WHERE id = p_user2_id;
+
+    UPDATE users SET shift_id = v_shift2 WHERE id = p_user1_id;
+    UPDATE users SET shift_id = v_shift1 WHERE id = p_user2_id;
+END;
+$$;
+
+-- 32. Fungsi Ubah Role Anggota (Admin)
+CREATE OR REPLACE FUNCTION update_user_role(p_admin_id UUID, p_target_id UUID, p_new_role TEXT)
+RETURNS VOID
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE
+    v_role TEXT;
+BEGIN
+    SELECT role INTO v_role FROM users WHERE id = p_admin_id;
+    IF v_role != 'admin' THEN
+        RAISE EXCEPTION 'Akses Ditolak: Bukan Admin';
+    END IF;
+
+    IF p_new_role NOT IN ('admin', 'anggota') THEN
+        RAISE EXCEPTION 'Role tidak valid. Hanya admin atau anggota.';
+    END IF;
+
+    IF p_target_id = p_admin_id THEN
+        RAISE EXCEPTION 'Tidak bisa mengubah role diri sendiri';
+    END IF;
+
+    UPDATE users SET role = p_new_role WHERE id = p_target_id;
+END;
+$$;

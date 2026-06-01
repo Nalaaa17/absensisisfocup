@@ -4,12 +4,13 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Pagination } from '@/components/ui/Pagination';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Users, Snowflake, Search, Plus } from 'lucide-react';
+import { Users, Snowflake, Search, Plus, Shield } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import { PageLayout } from '@/components/layout/PageLayout';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 interface Member {
   id: string;
@@ -45,8 +46,20 @@ export default function KelolaAnggota() {
   const [freezeDays, setFreezeDays] = useState(1);
   const [isFreezing, setIsFreezing] = useState(false);
 
+  const [roleModal, setRoleModal] = useState<Member | null>(null);
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+
+  // Polling auto-refresh tiap 15 detik
   useEffect(() => {
+    if (!user) return;
+
     fetchMembers();
+
+    const interval = setInterval(() => {
+      fetchMembers();
+    }, 15000);
+
+    return () => clearInterval(interval);
   }, [user]);
 
   const fetchMembers = async () => {
@@ -145,6 +158,28 @@ export default function KelolaAnggota() {
       } else {
         toast.error('Gagal menolak permintaan');
       }
+    }
+  };
+
+  const handleRoleChange = async () => {
+    if (!user || !roleModal) return;
+    setIsUpdatingRole(true);
+    try {
+      const newRole = roleModal.role === 'admin' ? 'anggota' : 'admin';
+      const { error } = await supabase.rpc('update_user_role', {
+        p_admin_id: user.id,
+        p_target_id: roleModal.id,
+        p_new_role: newRole
+      });
+      if (error) throw error;
+      toast.success(`Role ${roleModal.name} diubah menjadi ${newRole === 'admin' ? 'Admin' : 'Anggota'}`);
+      setRoleModal(null);
+      fetchMembers();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err);
+      toast.error(`Gagal: ${msg}`);
+    } finally {
+      setIsUpdatingRole(false);
     }
   };
 
@@ -359,6 +394,12 @@ export default function KelolaAnggota() {
                               <Button variant="outline" size="sm" className="text-neutral-600 border-neutral-200 hover:bg-neutral-50 rounded-lg text-xs" onClick={() => setResetModal(m)}>
                                 Reset Password
                               </Button>
+                              {m.id !== user?.id && (
+                                <Button variant="outline" size="sm" className="text-gold-600 border-gold-200 hover:bg-gold-50 rounded-lg text-xs" onClick={() => setRoleModal(m)}>
+                                  <Shield className="w-3 h-3 mr-1" />
+                                  Ubah Role
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -422,6 +463,20 @@ export default function KelolaAnggota() {
           </div>
         </div>
       )}
+
+      {/* Modal Ubah Role */}
+      <ConfirmModal
+        isOpen={roleModal !== null}
+        title="Konfirmasi Ubah Role"
+        description={
+          roleModal
+            ? `Ubah role ${roleModal.name} dari ${roleModal.role === 'admin' ? 'Admin' : 'Anggota'} menjadi ${roleModal.role === 'admin' ? 'Anggota' : 'Admin'}?`
+            : ''
+        }
+        onCancel={() => setRoleModal(null)}
+        onConfirm={handleRoleChange}
+        confirmLabel={isUpdatingRole ? 'Menyimpan...' : 'Ya, Ubah'}
+      />
 
       {/* Modal Reset Password */}
       {resetModal && (
